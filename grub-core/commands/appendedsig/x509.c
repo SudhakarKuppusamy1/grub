@@ -17,7 +17,7 @@
  *  along with GRUB.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-#include <grub/libtasn1.h>
+#include <libtasn1.h>
 #include <grub/types.h>
 #include <grub/err.h>
 #include <grub/mm.h>
