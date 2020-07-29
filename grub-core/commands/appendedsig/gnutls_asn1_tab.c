@@ -1,5 +1,5 @@
 #include <grub/mm.h>
-#include <grub/libtasn1.h>
+#include <libtasn1.h>
 
 const asn1_static_node gnutls_asn1_tab[] = {
   { "GNUTLS", 536872976, NULL },
