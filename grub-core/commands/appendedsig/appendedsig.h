@@ -18,7 +18,7 @@
  */
 
 #include <grub/crypto.h>
-#include <grub/libtasn1.h>
+#include <libtasn1.h>
 
 extern asn1_node _gnutls_gnutls_asn;
 extern asn1_node _gnutls_pkix_asn;
