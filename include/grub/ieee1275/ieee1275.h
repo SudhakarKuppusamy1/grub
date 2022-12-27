@@ -230,6 +230,20 @@ char *EXPORT_FUNC(grub_ieee1275_encode_uint4) (grub_ieee1275_ihandle_t ihandle,
                                              grub_size_t *size);
 int EXPORT_FUNC(grub_ieee1275_get_block_size) (grub_ieee1275_ihandle_t ihandle);
 
+int EXPORT_FUNC (grub_ieee1275_test) (const char *name,
+                                      grub_ieee1275_cell_t *missing);
+
+int grub_ieee1275_pks_max_object_size (grub_size_t *result);
+
+int grub_ieee1275_pks_read_object (grub_uint8_t consumer, grub_uint8_t *label,
+                                   grub_size_t label_len, grub_uint8_t *buffer,
+                                   grub_size_t buffer_len, grub_size_t *data_len,
+                                   grub_uint32_t *policies);
+
+int grub_ieee1275_pks_read_sbvar (grub_uint8_t sbvarflags, grub_uint8_t sbvartype,
+                                  grub_uint8_t *buffer, grub_size_t buffer_len,
+                                  grub_size_t *data_len);
+
 grub_err_t EXPORT_FUNC(grub_claimmap) (grub_addr_t addr, grub_size_t size);
 
 int
