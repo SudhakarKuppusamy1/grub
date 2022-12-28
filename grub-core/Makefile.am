@@ -79,6 +79,7 @@ KERNEL_HEADER_FILES += $(top_srcdir)/include/grub/file.h
 KERNEL_HEADER_FILES += $(top_srcdir)/include/grub/fs.h
 KERNEL_HEADER_FILES += $(top_srcdir)/include/grub/i18n.h
 KERNEL_HEADER_FILES += $(top_srcdir)/include/grub/kernel.h
+KERNEL_HEADER_FILES += $(top_srcdir)/include/grub/platform_keystore.h
 KERNEL_HEADER_FILES += $(top_srcdir)/include/grub/list.h
 KERNEL_HEADER_FILES += $(top_srcdir)/include/grub/lockdown.h
 KERNEL_HEADER_FILES += $(top_srcdir)/include/grub/misc.h
