@@ -170,6 +170,7 @@ kernel = {
   ieee1275 = kern/ieee1275/openfw.c;
   ieee1275 = term/ieee1275/console.c;
   ieee1275 = kern/ieee1275/init.c;
+  ieee1275 = kern/ieee1275/platform_keystore.c;
 
   uboot = disk/uboot/ubootdisk.c;
   uboot = kern/uboot/uboot.c;
