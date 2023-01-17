@@ -298,7 +298,7 @@ extern "C"
 #define ASN1_MAX_ERROR_DESCRIPTION_SIZE 128
 
   /*  Functions definitions          */
-
+#if 0
   extern ASN1_API int
   asn1_parser2tree (const char *file, asn1_node *definitions, char *error_desc);
 
@@ -307,12 +307,15 @@ extern "C"
                      const char *outputFileName,
                      const char *vectorName,
                      char *error_desc);
+#endif
 
   extern ASN1_API int
   asn1_array2tree (const asn1_static_node *array, asn1_node *definitions, char *errorDescription);
 
+#if 0
   extern ASN1_API void
   asn1_print_structure (FILE *out, asn1_node_const structure, const char *name, int mode);
+#endif
 
   extern ASN1_API int
   asn1_create_element (asn1_node_const definitions, const char *source_name, asn1_node *element);
@@ -326,8 +329,10 @@ extern "C"
   extern ASN1_API int
   asn1_delete_element (asn1_node structure, const char *element_name);
 
+#if 0
   extern ASN1_API int
   asn1_write_value (asn1_node node_root, const char *name, const void *ivalue, int len);
+#endif
 
   extern ASN1_API int
   asn1_read_value (asn1_node_const root, const char *name, void *ivalue, int *len);
@@ -341,8 +346,10 @@ extern "C"
   extern ASN1_API int
   asn1_number_of_elements (asn1_node_const element, const char *name, int *num);
 
+#if 0
   extern ASN1_API int
   asn1_der_coding (asn1_node_const element, const char *name, void *ider, int *len, char *ErrorDescription);
+#endif
 
   extern ASN1_API int
   asn1_der_decoding2 (asn1_node *element, const void *ider, int *max_ider_len,
@@ -351,10 +358,12 @@ extern "C"
   extern ASN1_API int
   asn1_der_decoding (asn1_node *element, const void *ider, int ider_len, char *errorDescription);
 
+#if 0
   /* Do not use. Use asn1_der_decoding() instead. */
   extern ASN1_API int
   asn1_der_decoding_element (asn1_node *structure, const char *elementName, const void *ider,
                              int len, char *errorDescription) _ASN1_GCC_ATTR_DEPRECATED;
+#endif
 
   extern ASN1_API int
   asn1_der_decoding_startEnd (asn1_node element, const void *ider, int ider_len,
@@ -373,15 +382,19 @@ extern "C"
   extern ASN1_API const char *
   asn1_find_structure_from_oid (asn1_node_const definitions, const char *oidValue);
 
+#if 0
   __LIBTASN1_PURE__
   extern ASN1_API const char *
   asn1_check_version (const char *req_version);
+#endif
 
   __LIBTASN1_PURE__ extern ASN1_API const char *
   asn1_strerror (int error);
 
+#if 0
   extern ASN1_API void
   asn1_perror (int error);
+#endif
 
 #define ASN1_MAX_TAG_SIZE 4
 #define ASN1_MAX_LENGTH_SIZE 9
