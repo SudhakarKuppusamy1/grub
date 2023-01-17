@@ -30,11 +30,11 @@
 #include "parser_aux.h"
 #include <gstr.h>
 #include "element.h"
-#include "minmax.h"
 #include <structure.h>
 
 #define MAX_TAG_LEN 16
 
+#if 0
 /*
  * Function : _asn1_error_description_value_not_found
  * Description: creates the ErrorDescription string
@@ -56,6 +56,7 @@ _asn1_error_description_value_not_found (asn1_node node, char *ErrorDescription)
                            ASN1_MAX_ERROR_DESCRIPTION_SIZE - 40);
   Estrcat (ErrorDescription, "' not found");
 }
+#endif
 
 /*
  * asn1_length_der:
@@ -240,6 +241,7 @@ asn1_encode_simple_der (unsigned int etype, const unsigned char *str, unsigned i
   return ASN1_SUCCESS;
 }
 
+#if 0
 /*
  * Function : _asn1_time_der
  * Description: creates the DER coding for a TIME
@@ -272,6 +274,7 @@ _asn1_time_der (unsigned char *str, int str_len, unsigned char *der, int *der_le
 
   return ASN1_SUCCESS;
 }
+#endif
 
 static void
 encode_val (uint64_t val, unsigned char *der, int max_len, int *der_len)
@@ -472,6 +475,7 @@ asn1_bit_der (const unsigned char *str, int bit_len, unsigned char *der, int *de
   *der_len = len_byte + len_len + 1;
 }
 
+#if 0
 /*
  * Function : _asn1_complete_explicit_tag
  * Description: add the length coding to the EXPLICIT
@@ -547,6 +551,7 @@ _asn1_complete_explicit_tag (asn1_node node, unsigned char *der, int *counter, i
 
   return ASN1_SUCCESS;
 }
+#endif
 
 const tag_and_class_st _asn1_tags[] = {
   [ASN1_ETYPE_GENERALSTRING] =
@@ -599,6 +604,7 @@ const tag_and_class_st _asn1_tags[] = {
 
 unsigned int _asn1_tags_size = sizeof (_asn1_tags) / sizeof (_asn1_tags[0]);
 
+#if 0
 /*
  * Function : _asn1_insert_tag_der
  * Description: creates the DER coding of tags of one
@@ -1367,3 +1373,4 @@ error:
   asn1_delete_structure (&node);
   return err;
 }
+#endif
