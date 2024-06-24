@@ -943,8 +943,9 @@ grub_install_generate_image (const char *dir, const char *prefix,
       total_module_size += dtb_size + sizeof (struct grub_module_header);
     }
 
-  if (sbat_path != NULL && image_target->id != IMAGE_EFI)
-    grub_util_error (_(".sbat section can be embedded into EFI images only"));
+  if (sbat_path != NULL && (image_target->id != IMAGE_EFI && image_target->id != IMAGE_PPC))
+    grub_util_error (_(".sbat section can be embedded into EFI images/"
+                       "sbat ELF Note can be added into powerpc-ieee1275 images only"));
 
   if (disable_shim_lock)
     total_module_size += sizeof (struct grub_module_header);
@@ -1814,6 +1815,13 @@ grub_install_generate_image (const char *dir, const char *prefix,
       {
 	grub_uint64_t target_addr;
 	char *sbat = NULL;
+	if (sbat_path != NULL)
+	  {
+	    sbat_size = grub_util_get_image_size (sbat_path);
+	    sbat = xmalloc (sbat_size);
+	    grub_util_load_image (sbat_path, sbat);
+	    layout.sbat_size = sbat_size;
+	  }
 	if (image_target->id == IMAGE_LOONGSON_ELF)
 	  {
 	    if (comp == GRUB_COMPRESSION_NONE)
