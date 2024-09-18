@@ -1824,10 +1824,10 @@ grub_install_generate_image (const char *dir, const char *prefix,
 	else
 	  target_addr = image_target->link_addr;
 	if (image_target->voidp_sizeof == 4)
-	  grub_mkimage_generate_elf32 (image_target, note, &core_img, &core_size,
+	  grub_mkimage_generate_elf32 (image_target, note, appsig_size, &core_img, &core_size,
 				       target_addr, &layout);
 	else
-	  grub_mkimage_generate_elf64 (image_target, note, &core_img, &core_size,
+	  grub_mkimage_generate_elf64 (image_target, note, appsig_size, &core_img, &core_size,
 				       target_addr, &layout);
       }
       break;
