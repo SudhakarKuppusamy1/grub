@@ -485,7 +485,7 @@ grub_get_binary_hash (const grub_size_t binary_hash_size, const grub_uint8_t *da
     grub_memcpy (&guid, &GRUB_PKS_CERT_SHA512_GUID, GRUB_UUID_SIZE);
   else
     {
-      grub_dprintf ("appendedsig", "unsupported hash type (%d) and skipping binary hash\n",
+      grub_dprintf ("appendedsig", "unsupported hash type (%" PRIuGRUB_SIZE ") and skipping binary hash\n",
                     binary_hash_size);
       return GRUB_ERR_UNKNOWN_COMMAND;
     }
