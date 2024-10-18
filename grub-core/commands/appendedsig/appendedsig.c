@@ -679,7 +679,7 @@ grub_cmd_trusted_list (grub_command_t cmd __attribute__((unused)),
 
   for (cert = grub_db.keys; cert; cert = cert->next)
     {
-      grub_printf (N_("trusted certificate %d:\n"), cert_num);
+      grub_printf (N_("trusted certificate %" PRIuGRUB_SIZE ":\n"), cert_num);
       grub_printf (N_("\tserial: "));
 
       for (i = 0; i < cert->serial_len - 1; i++)
@@ -692,7 +692,7 @@ grub_cmd_trusted_list (grub_command_t cmd __attribute__((unused)),
 
   for (i = 0; i < grub_db.signature_entries; i++)
     {
-      grub_printf (N_("trusted binary hash %d:\n"), i+1);
+      grub_printf (N_("trusted binary hash %" PRIuGRUB_SIZE ":\n"), i+1);
       grub_printf (N_("\thash: "));
       grub_printhex (grub_db.signatures[i], grub_db.signature_size[i]);
     }
@@ -710,7 +710,7 @@ grub_cmd_distrusted_list (grub_command_t cmd __attribute__((unused)),
 
   for (cert = grub_dbx.keys; cert; cert = cert->next)
     {
-      grub_printf (N_("distrusted certificate %d:\n"), cert_num);
+      grub_printf (N_("distrusted certificate %" PRIuGRUB_SIZE ":\n"), cert_num);
       grub_printf (N_("\tserial: "));
 
       for (i = 0; i < cert->serial_len - 1; i++)
@@ -723,7 +723,7 @@ grub_cmd_distrusted_list (grub_command_t cmd __attribute__((unused)),
 
   for (i = 0; i < grub_dbx.signature_entries; i++)
     {
-      grub_printf (N_("distrusted certificate/binary hash %d:\n"), i+1);
+      grub_printf (N_("distrusted certificate/binary hash %" PRIuGRUB_SIZE ":\n"), i+1);
       grub_printf (N_("\thash: "));
       grub_printhex (grub_dbx.signatures[i], grub_dbx.signature_size[i]);
     }
@@ -824,7 +824,7 @@ grub_cmd_trusted_hash (grub_command_t cmd __attribute__((unused)), int argc, cha
 
   grub_file_close (hash_file);
 
-  grub_dprintf ("appendedsig", "adding a trusted binary hash %s\n with size of %u\n",
+  grub_dprintf ("appendedsig", "adding a trusted binary hash %s\n with size of %" PRIdGRUB_SSIZE "\n",
                 hash_data, hash_data_size);
 
   /* only accept SHA256, SHA384 and SHA512 binary hash */
@@ -874,7 +874,7 @@ grub_cmd_distrusted_cert (grub_command_t cmd __attribute__((unused)), int argc, 
 
   if (cert_num > grub_db.key_entries)
     return grub_error (GRUB_ERR_BAD_ARGUMENT,
-                       N_("trusted certificate number should not exceed %u"),
+                       N_("trusted certificate number should not exceed %" PRIuGRUB_SIZE),
                        grub_db.key_entries);
   else if (cert_num < grub_db.key_entries)
     return grub_error (GRUB_ERR_BAD_ARGUMENT,
@@ -949,7 +949,7 @@ grub_cmd_distrusted_hash (grub_extcmd_context_t ctxt, int argc, char **args)
   grub_file_close (hash_file);
 
   grub_dprintf ("appendedsig", "adding a distrusted certificate/binary hash %s\n"
-                " with size of %u\n", hash_data, hash_data_size);
+                " with size of %" PRIdGRUB_SSIZE "\n", hash_data, hash_data_size);
 
   if (ctxt->state[OPTION_BINARY_HASH].set)
     {
