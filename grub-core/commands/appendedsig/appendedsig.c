@@ -1208,7 +1208,7 @@ grub_create_trusted_list (void)
         }
       else
         grub_printf ("Warning: unsupported signature data type and "
-                     "skipping trusted data (%d)\n", i + 1);
+                     "skipping trusted data (%" PRIuGRUB_SIZE ")\n", i + 1);
     }
 
   return GRUB_ERR_NONE;
@@ -1247,7 +1247,7 @@ grub_create_distrusted_list (void)
             }
           else
             grub_printf ("Warning: unsupported signature data type and "
-                         "skipping distrusted data (%d)\n", i + 1);
+                         "skipping distrusted data (%" PRIuGRUB_SIZE ")\n", i + 1);
         }
     }
 
@@ -1383,7 +1383,7 @@ GRUB_MOD_INIT (appendedsig)
           grub_error (rc, "static trusted list creation failed");
         }
       else
-        grub_printf ("appendedsig: the trusted list now has %u static keys\n",
+        grub_printf ("appendedsig: the trusted list now has %" PRIuGRUB_SIZE " static keys\n",
                      grub_db.key_entries);
     }
   else if (grub_use_platform_keystore && check_sigs == check_sigs_forced)
@@ -1412,8 +1412,8 @@ GRUB_MOD_INIT (appendedsig)
               grub_error (rc, "distrusted list creation failed");
             }
           else
-            grub_printf ("appendedsig: the trusted list now has %u keys.\n"
-                         "appendedsig: the distrusted list now has %u keys.\n",
+            grub_printf ("appendedsig: the trusted list now has %" PRIuGRUB_SIZE " keys.\n"
+                         "appendedsig: the distrusted list now has %" PRIuGRUB_SIZE " keys.\n",
                          grub_db.signature_entries + grub_db.key_entries,
                          grub_dbx.signature_entries);
         }
