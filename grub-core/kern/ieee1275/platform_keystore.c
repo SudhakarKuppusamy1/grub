@@ -349,7 +349,7 @@ grub_platform_keystore_init (void)
       /* DB */
       rc = grub_secure_boot_variables (0, DB, &grub_platform_keystore.db,
                                        &grub_platform_keystore.db_entries);
-      if (rc == PKS_OBJECT_NOT_FOUND)
+      if ((int)rc == PKS_OBJECT_NOT_FOUND)
         {
           rc = GRUB_ERR_NONE;
           /* DB variable won't be available by default in PKS, So, it will loads the Default Keys from ELF Note */
@@ -361,7 +361,7 @@ grub_platform_keystore_init (void)
           /* DBX */
           rc = grub_secure_boot_variables (0, DBX, &grub_platform_keystore.dbx,
                                            &grub_platform_keystore.dbx_entries);
-          if (rc == PKS_OBJECT_NOT_FOUND)
+          if ((int)rc == PKS_OBJECT_NOT_FOUND)
             {
               grub_printf ("Warning: dbx is not found!\n");
               rc = GRUB_ERR_NONE;
