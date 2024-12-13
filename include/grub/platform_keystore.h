@@ -49,6 +49,7 @@
 #define GRUB_UUID_SIZE 16
 #define GRUB_MAX_HASH_SIZE 64
 
+typedef grub_uint8_t grub_bool_t;
 typedef struct grub_uuid grub_uuid_t;
 typedef struct grub_esd grub_esd_t;
 typedef struct grub_esl grub_esl_t;
@@ -207,10 +208,11 @@ struct grub_pks_sd
 /* The structure of a PKS.*/
 struct grub_pks
 {
-  grub_pks_sd_t *db;        /* signature database */
-  grub_pks_sd_t *dbx;       /* forbidden signature database */
-  grub_size_t db_entries;   /* size of signature database */
-  grub_size_t dbx_entries;  /* size of forbidden signature database */
+  grub_pks_sd_t *db;          /* signature database */
+  grub_pks_sd_t *dbx;         /* forbidden signature database */
+  grub_size_t db_entries;     /* size of signature database */
+  grub_size_t dbx_entries;    /* size of forbidden signature database */
+  grub_bool_t use_static_keys;/* flag to indicate use of static keys */
 } GRUB_PACKED;
 
 #ifdef __powerpc__
@@ -225,7 +227,7 @@ extern grub_pks_t EXPORT_VAR(grub_platform_keystore);
 #else
 
 #define grub_use_platform_keystore	0
-grub_pks_t grub_platform_keystore = {NULL, NULL, 0, 0};
+grub_pks_t grub_platform_keystore = {NULL, NULL, 0, 0, 0};
 void grub_release_platform_keystore (void);
 
 #endif

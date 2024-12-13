@@ -34,7 +34,11 @@
 /* Platform Keystore */
 static grub_size_t pks_max_object_size;
 grub_uint8_t grub_use_platform_keystore = 0;
-grub_pks_t grub_platform_keystore = { .db = NULL, .dbx = NULL, .db_entries = 0, .dbx_entries = 0 };
+grub_pks_t grub_platform_keystore = { .db = NULL,
+                                      .dbx = NULL,
+                                      .db_entries = 0,
+                                      .dbx_entries = 0,
+                                      .use_static_keys = 0 };
 
 /* converts the esl data into the ESL */
 static grub_esl_t *
@@ -316,6 +320,15 @@ grub_platform_keystore_init (void)
       /* DB */
       rc = grub_read_secure_boot_variables (0, DB, &grub_platform_keystore.db,
                                             &grub_platform_keystore.db_entries);
+      if (rc == PKS_OBJECT_NOT_FOUND)
+        {
+          rc = GRUB_ERR_NONE;
+          /*
+           * DB variable won't be available by default in PKS.
+           * So, it will loads the Default Keys from ELF Note */
+          grub_platform_keystore.use_static_keys = 1;
+        }
+
       if (rc == GRUB_ERR_NONE)
         {
           /* DBX */
