@@ -1082,7 +1082,7 @@ grub_create_distrusted_list (void)
  * parses it, and adds it to the trusted list.
  */
 static grub_err_t
-grub_build_static_trusted_list (const struct grub_module_header *header)
+grub_build_static_trusted_list (const struct grub_module_header *header, const grub_bool_t mode)
 {
   grub_err_t err = GRUB_ERR_NONE;
   struct grub_file pseudo_file;
@@ -1101,7 +1101,14 @@ grub_build_static_trusted_list (const struct grub_module_header *header)
   if (err != GRUB_ERR_NONE)
     return err;
 
-  err = grub_add_certificate (cert_data, cert_data_size, &grub_db, 1);
+  if (mode)
+    {
+      err = grub_is_distrusted_cert_hash (cert_data, cert_data_size);
+      if (err != GRUB_ERR_NONE)
+        return err;
+    }
+
+  err = grub_add_certificate (cert_data, cert_data_size, &grub_db, mode);
   if (cert_data != NULL)
     grub_free (cert_data);
 
@@ -1154,6 +1161,20 @@ grub_release_distrusted_list (void)
   grub_memset (&grub_dbx, 0x00, sizeof (grub_dbx));
 }
 
+static grub_err_t
+grub_load_static_keys (const struct grub_module_header *header, const grub_bool_t mode)
+{
+  int rc = GRUB_ERR_NONE;
+  FOR_MODULES (header)
+    {
+      /* Not an ELF module, skip.  */
+      if (header->type != OBJ_TYPE_X509_PUBKEY)
+        continue;
+      rc = grub_build_static_trusted_list (header, mode);
+    }
+  return rc;
+}
+
 GRUB_MOD_INIT (appendedsig)
 {
   int rc;
@@ -1172,26 +1193,29 @@ GRUB_MOD_INIT (appendedsig)
 
   if (!grub_use_platform_keystore && check_sigs == check_sigs_forced)
     {
-      FOR_MODULES (header)
+      rc = grub_load_static_keys (header, 0);
+      if (rc != GRUB_ERR_NONE)
         {
-          /* Not an ELF module, skip.  */
-          if (header->type != OBJ_TYPE_X509_PUBKEY)
-            continue;
-
-          rc = grub_build_static_trusted_list (header);
-          if (rc != GRUB_ERR_NONE)
-            {
-              grub_release_trusted_list ();
-              grub_error (rc, "static trusted list creation failed");
-            }
-          else
-            grub_printf ("appendedsig: the trusted list now has %" PRIuGRUB_SIZE " static keys\n",
-                         grub_db.key_entries);
+          grub_release_trusted_list ();
+          grub_error (rc, "static trusted list creation failed");
         }
+      else
+        grub_printf ("appendedsig: the trusted list now has %" PRIuGRUB_SIZE " static keys\n",
+                     grub_db.key_entries);
+
     }
   else if (grub_use_platform_keystore && check_sigs == check_sigs_forced)
     {
-      rc = grub_create_trusted_list ();
+
+      if (grub_platform_keystore.use_static_keys == 1)
+        {
+          grub_printf ("Warning: db variable is not available at PKS and using a static keys "
+                       "as a default key in trusted list\n");
+          rc = grub_load_static_keys (header, 1);
+        }
+      else
+        rc = grub_create_trusted_list ();
+
       if (rc != GRUB_ERR_NONE)
         {
           grub_release_trusted_list ();
