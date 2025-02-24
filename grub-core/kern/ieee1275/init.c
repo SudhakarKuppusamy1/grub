@@ -50,6 +50,8 @@
 #include <grub/ieee1275/alloc.h>
 #endif
 #include <grub/lockdown.h>
+#include <grub/powerpc/ieee1275/ieee1275.h>
+#include <grub/powerpc/ieee1275/platform_keystore.h>
 
 /* The maximum heap size we're going to claim at boot. Not used by sparc. */
 #ifdef __i386__
@@ -1001,7 +1003,8 @@ grub_get_ieee1275_secure_boot (void)
 {
   grub_ieee1275_phandle_t root;
   int rc;
-  grub_uint32_t is_sb;
+  grub_err_t err;
+  grub_uint32_t is_sb = 0;
 
   rc = grub_ieee1275_finddevice ("/", &root);
   if (rc != 0)
@@ -1026,7 +1029,16 @@ grub_get_ieee1275_secure_boot (void)
    * We only support enforce.
    */
   if (is_sb >= 2)
-    grub_lockdown ();
+    {
+      grub_dprintf ("ieee1275", "Secure Boot Enabled\n");
+      err = grub_pks_keystore_init ();
+      if (err != GRUB_ERR_NONE)
+        grub_error (err, "Initialization of the Platform Keystore failed!\n");
+
+      grub_lockdown ();
+    }
+  else
+    grub_dprintf ("ieee1275", "Secure Boot Disabled\n");
 }
 
 grub_addr_t grub_modbase;
