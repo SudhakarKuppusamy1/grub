@@ -388,4 +388,13 @@ struct grub_packed_guid
 } GRUB_PACKED;
 typedef struct grub_packed_guid grub_packed_guid_t;
 
+
+#define GRUB_UUID_SIZE 16
+typedef struct grub_uuid grub_uuid_t;
+/* The structure of a UUID.*/
+struct grub_uuid
+{
+  grub_uint8_t b[GRUB_UUID_SIZE];
+};
+
 #endif /* ! GRUB_TYPES_HEADER */
