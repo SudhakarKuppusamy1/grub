@@ -961,10 +961,18 @@ grub_get_ieee1275_secure_boot (void)
   int rc;
   grub_uint32_t is_sb;
 
-  grub_ieee1275_finddevice ("/", &root);
+  if (grub_ieee1275_finddevice ("/", &root))
+    {
+      grub_error (GRUB_ERR_UNKNOWN_DEVICE, "couldn't find / node");
+      return;
+    }
 
   rc = grub_ieee1275_get_integer_property (root, "ibm,secure-boot", &is_sb, sizeof (is_sb), 0);
-
+  if (rc < 0)
+    {
+      grub_error (GRUB_ERR_UNKNOWN_DEVICE, "couldn't examine /ibm,secure-boot property");
+      return;
+    }
   /*
    * ibm,secure-boot:
    * 0 - disabled
@@ -974,7 +982,7 @@ grub_get_ieee1275_secure_boot (void)
    *
    * We only support enforce.
    */
-  if (rc >= 0 && is_sb >= 2)
+  if (is_sb >= 2)
     grub_lockdown ();
 }
 
