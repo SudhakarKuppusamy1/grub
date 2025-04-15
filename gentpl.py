@@ -84,7 +84,7 @@ GROUPS["fdt"] = [ "arm64_efi", "arm_uboot", "arm_efi", "loongarch64_efi", "riscv
 
 # Needs software helpers for division
 # Must match GRUB_DIVISION_IN_SOFTWARE in misc.h
-GROUPS["softdiv"] = GROUPS["arm"] + ["ia64_efi"] + GROUPS["riscv32"]
+GROUPS["softdiv"] = GROUPS["arm"] + ["ia64_efi"] + GROUPS["riscv32"] + GROUPS["mips"]
 GROUPS["no_softdiv"]   = GRUB_PLATFORMS[:]
 for i in GROUPS["softdiv"]: GROUPS["no_softdiv"].remove(i)
 

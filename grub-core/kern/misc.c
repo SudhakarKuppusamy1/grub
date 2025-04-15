@@ -721,7 +721,7 @@ grub_divmod64 (grub_uint64_t n, grub_uint64_t d, grub_uint64_t *r)
      Using that code would just make us use software division routines, calling
      ourselves indirectly and hence getting infinite recursion.
   */
-#if !GRUB_DIVISION_IN_SOFTWARE
+#if !GRUB_DIVISION_IN_SOFTWARE || defined(__mips__)
   /* Skip the slow computation if 32-bit arithmetic is possible.  */
   if (n < 0xffffffff && d < 0xffffffff)
     {

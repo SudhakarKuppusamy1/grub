@@ -434,7 +434,7 @@ extern void EXPORT_FUNC(grub_cli_set_auth_needed) (void);
 
 /* Must match softdiv group in gentpl.py.  */
 #if !defined(GRUB_MACHINE_EMU) && (defined(__arm__) || defined(__ia64__) || \
-    (defined(__riscv) && (__riscv_xlen == 32)))
+    (defined(__riscv) && (__riscv_xlen == 32))) || defined(__mips__)
 #define GRUB_DIVISION_IN_SOFTWARE 1
 #else
 #define GRUB_DIVISION_IN_SOFTWARE 0
