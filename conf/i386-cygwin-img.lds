@@ -51,6 +51,10 @@ SECTIONS
   {
     *(.stabstr)
   }
+  /DISCARD/ : {
+    *(.buildid)
+    *(.reloc)
+  }
 }
 
 ASSERT("__rdata_end__"=="edata", ".pdata not empty")
