@@ -104,8 +104,6 @@ appended_signature_test (void)
   char *trust_args2[] = { (char *) "(proc)/certificate2.der", NULL };
   char *trust_args_printable[] = { (char *) "(proc)/certificate_printable.der", NULL };
   char *trust_args_eku[] = { (char *) "(proc)/certificate_eku.der", NULL };
-  char *distrust_args[] = { (char *) "1", NULL };
-  char *distrust2_args[] = { (char *) "2", NULL };
   grub_err_t err;
 
   grub_procfs_register ("certificate.der", &certificate_der_entry);
@@ -113,10 +111,10 @@ appended_signature_test (void)
   grub_procfs_register ("certificate_printable.der", &certificate_printable_der_entry);
   grub_procfs_register ("certificate_eku.der", &certificate_eku_der_entry);
 
-  cmd_trust = grub_command_find ("trust_certificate");
+  cmd_trust = grub_command_find ("trusted_certificate");
   if (cmd_trust == NULL)
     {
-      grub_test_assert (0, "can't find command `%s'", "trust_certificate");
+      grub_test_assert (0, "can't find command `%s'", "trusted_certificate");
       return;
     }
 
@@ -136,7 +134,7 @@ appended_signature_test (void)
    * releases some internal storage. This means it's not safe to call a second
    * time and we need to reload it.
    */
-  cmd_trust = grub_command_find ("trust_certificate");
+  cmd_trust = grub_command_find ("trusted_certificate");
 
   /* hi, signed with key 1, SHA-512 */
   DO_TEST (hi_signed, 1);
@@ -189,16 +187,16 @@ appended_signature_test (void)
    * removed by position in the list. Current the list looks like [#2, #1].
    *
    * First test removing the second certificate in the list, which is
-   * certificate #1, giving us just [#2].
+   * certificate #1
    */
-  cmd_distrust = grub_command_find ("distrust_certificate");
+  cmd_distrust = grub_command_find ("distrusted_certificate");
   if (cmd_distrust == NULL)
     {
-      grub_test_assert (0, "can't find command `%s'", "distrust_certificate");
+      grub_test_assert (0, "can't find command `%s'", "distrusted_certificate");
       return;
     }
 
-  err = (cmd_distrust->func) (cmd_distrust, 1, distrust2_args);
+  err = (cmd_distrust->func) (cmd_distrust, 1, trust_args);
   grub_test_assert (err == GRUB_ERR_NONE, "distrusting certificate 1 failed: %d: %s",
                     grub_errno, grub_errmsg);
   DO_TEST (hi_signed_2nd, 1);
@@ -211,18 +209,18 @@ appended_signature_test (void)
                     grub_errno, grub_errmsg);
   DO_TEST (hi_signed, 1);
 
-  /* Remove the first certificate in the list, giving us just [#2] */
-  err = (cmd_distrust->func) (cmd_distrust, 1, distrust_args);
-  grub_test_assert (err == GRUB_ERR_NONE, "distrusting certificate 1 (first time) failed: %d: %s",
+  /* Remove the first certificate in the list, which is certificate #2 */
+  err = (cmd_distrust->func) (cmd_distrust, 1, trust_args2);
+  grub_test_assert (err == GRUB_ERR_NONE, "distrusting certificate 2 (first time) failed: %d: %s",
                     grub_errno, grub_errmsg);
-  DO_TEST (hi_signed_2nd, 1);
-  DO_TEST (hi_signed, 0);
+  DO_TEST (hi_signed_2nd, 0);
+  DO_TEST (hi_signed, 1);
 
   /*
-   * Remove the first certificate again, giving an empty list.
+   * Remove the certificate#1 again, giving an empty list.
    * verify_appended should fail if there are no certificates to verify against.
    */
-  err = (cmd_distrust->func) (cmd_distrust, 1, distrust_args);
+  err = (cmd_distrust->func) (cmd_distrust, 1, trust_args);
   grub_test_assert (err == GRUB_ERR_NONE, "distrusting certificate 1 (second time) failed: %d: %s",
                     grub_errno, grub_errmsg);
   DO_TEST (hi_signed_2nd, 0);
