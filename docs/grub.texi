@@ -4408,6 +4408,7 @@ Modules can be loaded via the @command{insmod} (@pxref{insmod}) command.
 * tftp_module::
 * tga_module::
 * time_module::
+* tpcm_module::
 * tpm_module::
 * tr_module::
 * trig_module::
@@ -6114,6 +6115,31 @@ image files in GRUB.
 @section time
 This module provides support for the @command{time} command to measure the
 time taken by a given command and output it to the terminal.
+
+@node tpcm_module
+@section tpcm
+This module provides support for measuring loaded files and command strings
+through the Trusted Platform Control Module (TPCM) protocol on x86_64 EFI
+platforms. The module uses the EFI TPCM protocol provided by firmware. If the
+firmware does not provide this protocol, or provides it but does not enable
+verification, the module does not block booting. If verification is enabled and
+firmware reports that a measurement must be blocked, GRUB treats the event as
+fatal and stops the current boot path.
+
+When firmware verification is enabled, the module assigns each submitted
+object a stage identifier from the vendor-defined range 2000 through 2999.
+Each file submitted to the verifier, each kernel or module command line, and
+each GRUB command that is actually executed consumes one stage identifier.
+Therefore, at most 1000 objects can be submitted during a boot session.
+
+Large or complex configurations, especially loops that repeatedly execute
+GRUB commands, can exhaust this range. Once the range is exhausted, further
+objects are not submitted to firmware and verification returns an error.
+Configurations using this module should remain within this limit.
+
+The EFI protocol used by this module is a firmware interface implemented by
+TPCM-capable platforms. The protocol GUID is defined in GRUB as
+@code{GRUB_EFI_TPCM_PROTOCOL_GUID}.
 
 @node tpm_module
 @section tpm

@@ -2780,6 +2780,13 @@ module = {
 };
 
 module = {
+  name = tpcm;
+  common = commands/tpcm.c;
+  efi = commands/efi/tpcm.c;
+  enable = x86_64_efi;
+};
+
+module = {
   name = tr;
   common = commands/tr.c;
 };
