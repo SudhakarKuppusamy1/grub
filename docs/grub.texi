@@ -9379,6 +9379,104 @@ image works under UEFI secure boot and can maintain the secure-boot chain. It
 will also be necessary to enroll the public key used into a relevant firmware
 key database.
 
+@section Signing GRUB with an appended signature
+The @file{core.elf} itself can be signed with a Linux kernel module-style
+appended signature.
+To support IEEE1275 platforms where the boot image is often loaded directly
+from a disk partition rather than from a file system, the @file{core.elf}
+can specify the size and location of the appended signature with an ELF
+Note added by @command{grub-install} or @command{grub-mkimage}.
+An image can be signed this way using the @command{sign-file} command from
+the Linux kernel:
+
+@itemize
+@item Signing a GRUB image using single signer key. The grub.key is your
+private key, certificate.der is your GRUB signing public key, and
+kernel.der is your kernel signing public key.
+@example
+@group
+# Determine the size of the appended signature. It depends on the
+# signing certificate and the hash algorithm.
+#
+# Signing the /dev/null with an appended signature.
+
+sign-file SHA256 grub.key certificate.der /dev/null ./empty.sig
+
+# Get the size of the signature.
+
+EMPTY_SIG_SIZE=`stat -c '%s' ./empty.sig`
+
+# Remove the empty file signature.
+
+rm ./empty.sig
+
+# Build a GRUB image with $EMPTY_SIG_SIZE reserved for the signature.
+
+grub-install --appended-signature-size $EMPTY_SIG_SIZE \
+  --modules="appendedsig ..." ...
+                      or
+grub-mkimage -O powerpc-ieee1275 -o core.elf.unsigned -x kernel.der \
+  -p /grub --appended-signature-size $EMPTY_SIG_SIZE \
+  --modules="appendedsig ..." ...
+
+# Signing a GRUB image with an appended signature.
+
+sign-file SHA256 grub.key certificate.der core.elf.unsigned core.elf.signed
+
+@end group
+@end example
+@item Signing a GRUB image using more than one signer key. The grub1.key and
+grub2.key are your private keys, certificate1.der and certificate2.der
+are your GRUB signing public keys. kernel.der and kernel2.der are your
+kernel signing public key.
+@example
+@group
+# Generate a raw signature for /dev/null signing using OpenSSL.
+
+openssl cms -sign -binary -nocerts -in /dev/null -signer \
+  certificate1.pem -inkey grub1.key -signer certificate2.pem \
+  -inkey grub2.key -out ./empty.p7s -outform DER -noattr -md sha256
+
+# Signing the /dev/null with an appended signature.
+
+sign-file -s ./empty.p7s sha256 /dev/null /dev/null ./empty.signed
+
+# Get the size of the signature.
+
+EMPTY_SIG_SIZE=`stat -c '%s' ./empty.signed`
+
+# Remove the empty file signatures.
+
+rm ./empty.signed ./empty.p7s
+
+# Build a GRUB image with $EMPTY_SIG_SIZE reserved for the signature.
+
+grub-install --appended-signature-size $EMPTY_SIG_SIZE \
+  --modules="appendedsig ..." ...
+                         or
+grub-mkimage -O powerpc-ieee1275 -o core.elf.unsigned -x kernel.der \
+  -p /grub --appended-signature-size $EMPTY_SIG_SIZE \
+  --modules="appendedsig ..." ...
+
+# Generate a raw signature for GRUB image signing using OpenSSL.
+
+openssl cms -sign -binary -nocerts -in core.elf.unsigned -signer \
+  certificate.pem -inkey grub.key -signer certificate1.pem -inkey \
+  grub1.key -out core.p7s -outform DER -noattr -md sha256
+
+# Signing a GRUB image with an appended signature.
+
+sign-file -s core.p7s sha256 /dev/null core.elf.unsigned core.elf.signed
+
+@end group
+@end example
+@item Don't forget to install the signed image as required
+(e.g. on powerpc-ieee1275, to the PReP partition).
+@end itemize
+
+As with UEFI secure boot, it is necessary to build-in the required modules,
+or sign them separately.
+
 @node Platform limitations
 @chapter Platform limitations
 
