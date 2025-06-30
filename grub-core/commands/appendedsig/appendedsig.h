@@ -25,6 +25,29 @@ extern asn1_node grub_gnutls_pkix_asn;
 
 #define MAX_OID_LEN 32
 
+/*
+ * One or more x509 certificates.
+ * We do limited parsing:
+ * extracting only the version, serial, issuer, subject, RSA public key
+ * and key size.
+ * Also, hold the sha256, sha384, and sha512 fingerprint of the certificate.
+ */
+struct x509_certificate
+{
+  struct x509_certificate *next;
+  grub_uint8_t version;
+  grub_uint8_t *serial;
+  grub_size_t serial_len;
+  char *issuer;
+  grub_size_t issuer_len;
+  char *subject;
+  grub_size_t subject_len;
+  /* We only support RSA public keys. This encodes [modulus, publicExponent]. */
+  gcry_mpi_t mpis[2];
+  int modulus_size;
+  char fingerprint[3][64];
+};
+
 /* A PKCS#7 signedData signerInfo. */
 struct pkcs7_signerInfo
 {
@@ -42,6 +65,21 @@ struct pkcs7_signedData
   int signerInfo_count;
   struct pkcs7_signerInfo *signerInfos;
 };
+
+/*
+ * Import a DER-encoded certificate at 'data', of size 'size'.
+ * Place the results into 'results', which must be already allocated.
+ */
+extern grub_err_t
+parse_x509_certificate (const void *data, grub_size_t size, struct x509_certificate *results);
+
+/*
+ * Release all the storage associated with the x509 certificate.
+ * If the caller dynamically allocated the certificate, it must free it.
+ * The caller is also responsible for maintenance of the linked list.
+ */
+extern void
+certificate_release (struct x509_certificate *cert);
 
 /*
  * Parse a PKCS#7 message, which must be a signedData message.
