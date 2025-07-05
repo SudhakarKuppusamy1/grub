@@ -51,6 +51,8 @@
 #endif
 #if defined(__powerpc__)
 #include <grub/lockdown.h>
+#include <grub/powerpc/ieee1275/ieee1275.h>
+#include <grub/powerpc/ieee1275/platform_keystore.h>
 #endif
 
 #ifdef __powerpc__
@@ -1007,6 +1009,7 @@ grub_parse_cmdline (void)
 static void
 grub_ieee1275_get_secure_boot (void)
 {
+  grub_err_t err;
   grub_ieee1275_phandle_t root;
   grub_uint32_t sb_mode = GRUB_SB_DISABLED;
   int rc;
@@ -1038,7 +1041,16 @@ grub_ieee1275_get_secure_boot (void)
    * Now, only support disabled and enforced.
    */
   if (sb_mode == GRUB_SB_ENFORCED)
-    grub_lockdown ();
+    {
+      grub_dprintf ("ieee1275", "Secure Boot Enabled\n");
+      grub_lockdown ();
+    }
+  else
+    grub_dprintf ("ieee1275", "Secure Boot Disabled\n");
+
+  err = grub_pks_keystore_init ();
+  if (err != GRUB_ERR_NONE)
+    grub_error (err, "initialization of the Platform KeyStore failed\n");
 }
 #endif /* __powerpc__ */
 
