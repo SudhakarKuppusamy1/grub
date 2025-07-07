@@ -58,7 +58,8 @@ bool grub_pks_use_keystore = false;
 bool grub_pks_is_support_pks = false;
 
 /* Platform KeyStore db and dbx. */
-grub_pks_t grub_pks_keystore = { .db = NULL, .dbx = NULL, .db_entries = 0, .dbx_entries = 0 };
+grub_pks_t grub_pks_keystore = { .db = NULL, .dbx = NULL, .db_entries = 0, .dbx_entries = 0,
+                                 .use_static_keys = false };
 
 /*
  * Import the Globally Unique Identifier (GUID), EFI Signature Database (ESD),
@@ -325,6 +326,16 @@ grub_pks_keystore_init (void)
       grub_memset (&grub_pks_keystore, 0, sizeof (grub_pks_t));
       /* Read db from PKS. */
       rc = read_secure_boot_variables (0, DB, &grub_pks_keystore.db, &grub_pks_keystore.db_entries);
+      if (rc == GRUB_ERR_UNKNOWN_COMMAND)
+        {
+          rc = GRUB_ERR_NONE;
+          /*
+           * The db variable won't be available by default in PKS.
+           * So, it will use the static key as a default key from the GRUB ELF Note.
+           */
+          grub_pks_keystore.use_static_keys = true;
+        }
+
       if (rc == GRUB_ERR_NONE)
         {
           /* Read dbx from PKS. */
