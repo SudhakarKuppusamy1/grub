@@ -1914,7 +1914,9 @@ module = {
 module = {
   name = xen_boot;
   arm64 = loader/arm64/xen_boot.c;
+  x86_64_efi = loader/arm64/xen_boot.c;
   enable = arm64;
+  enable = x86_64_efi;
 };
 
 module = {
