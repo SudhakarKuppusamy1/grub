@@ -461,6 +461,76 @@ verify_signature (const gcry_mpi_t *pkmpi, const gcry_mpi_t hmpi,
 }
 
 static grub_err_t
+get_binary_hash (const grub_size_t binary_hash_size, const grub_uint8_t *data,
+                 const grub_size_t data_size, grub_uint8_t *hash, grub_size_t *hash_size)
+{
+  grub_packed_guid_t guid = { 0 };
+
+  /* support SHA256, SHA384 and SHA512 for binary hash */
+  if (binary_hash_size == 32)
+    grub_memcpy (&guid, &GRUB_PKS_CERT_SHA256_GUID, GRUB_PACKED_GUID_SIZE);
+  else if (binary_hash_size == 48)
+    grub_memcpy (&guid, &GRUB_PKS_CERT_SHA384_GUID, GRUB_PACKED_GUID_SIZE);
+  else if (binary_hash_size == 64)
+    grub_memcpy (&guid, &GRUB_PKS_CERT_SHA512_GUID, GRUB_PACKED_GUID_SIZE);
+  else
+    {
+      grub_dprintf ("appendedsig", "unsupported hash type (%" PRIuGRUB_SIZE ") and "
+                    "skipped\n", binary_hash_size);
+      return GRUB_ERR_UNKNOWN_COMMAND;
+    }
+
+  return get_hash (&guid, data, data_size, hash, hash_size);
+}
+
+/*
+ * Verify binary hash against the db and dbx list.
+ * The following errors can occur:
+ *  - GRUB_ERR_BAD_SIGNATURE: indicates that the hash is in dbx list.
+ *  - GRUB_ERR_EOF: the hash could not be found in the db and dbx list.
+ *  - GRUB_ERR_NONE: the hash is found in db list.
+ */
+static grub_err_t
+verify_binary_hash (const grub_uint8_t *data, const grub_size_t data_size)
+{
+  grub_err_t rc = GRUB_ERR_NONE;
+  grub_size_t i = 0, hash_size = 0;
+  grub_uint8_t hash[GRUB_MAX_HASH_SIZE] = { 0 };
+
+  for (i = 0; i < dbx.signature_entries; i++)
+    {
+      rc = get_binary_hash (dbx.signature_size[i], data, data_size, hash, &hash_size);
+      if (rc != GRUB_ERR_NONE)
+        continue;
+
+      if (hash_size == dbx.signature_size[i] &&
+          grub_memcmp (dbx.signatures[i], hash, hash_size) == 0)
+        {
+          grub_dprintf ("appendedsig", "the hash (%02x%02x%02x%02x) is present in the dbx list\n",
+                        hash[0], hash[1], hash[2], hash[3]);
+          return GRUB_ERR_BAD_SIGNATURE;
+        }
+    }
+
+  for (i = 0; i < db.signature_entries; i++)
+    {
+      rc = get_binary_hash (db.signature_size[i], data, data_size, hash, &hash_size);
+      if (rc != GRUB_ERR_NONE)
+        continue;
+
+      if (hash_size == db.signature_size[i] &&
+          grub_memcmp (db.signatures[i], hash, hash_size) == 0)
+        {
+          grub_dprintf ("appendedsig", "verified with a trusted hash (%02x%02x%02x%02x)\n",
+                        hash[0], hash[1], hash[2], hash[3]);
+          return GRUB_ERR_NONE;
+        }
+    }
+
+  return GRUB_ERR_EOF;
+}
+
+static grub_err_t
 grub_verify_appended_signature (const grub_uint8_t *buf, grub_size_t bufsize)
 {
   grub_err_t err;
@@ -472,8 +542,8 @@ grub_verify_appended_signature (const grub_uint8_t *buf, grub_size_t bufsize)
   struct pkcs7_signerInfo *si;
   int i;
 
-  if (!db.cert_entries)
-    return grub_error (GRUB_ERR_BAD_SIGNATURE, "no trusted keys to verify against");
+  if (!db.cert_entries && !db.signature_entries)
+    return grub_error (GRUB_ERR_BAD_SIGNATURE, "no trusted keys/hashes to verify against");
 
   err = extract_appended_signature (buf, bufsize, &sig);
   if (err != GRUB_ERR_NONE)
@@ -482,6 +552,16 @@ grub_verify_appended_signature (const grub_uint8_t *buf, grub_size_t bufsize)
   append_sig_len = sig.signature_len;
   datasize = bufsize - sig.signature_len;
 
+  /* Verify binary hash against the db and dbx list. */
+  err = verify_binary_hash (buf, datasize);
+  if (err == GRUB_ERR_BAD_SIGNATURE)
+    {
+      pkcs7_signedData_release (&sig.pkcs7);
+      return grub_error (err,
+                         "failed to verify the binary hash against a trusted binary hash\n");
+    }
+
+  /* Verify signature using trusted keys from db list. */
   for (i = 0; i < sig.pkcs7.signerInfo_count; i++)
     {
       /*
