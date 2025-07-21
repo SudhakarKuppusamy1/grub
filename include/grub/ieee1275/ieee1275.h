@@ -261,4 +261,23 @@ char *EXPORT_FUNC(grub_ieee1275_get_boot_dev) (void);
 						      (alias).name;	\
 						      grub_ieee1275_children_peer (&(alias)))
 
+
+#ifdef __powerpc__
+
+/*
+ * Secure Boot Mode:
+ * 0 - disabled
+ *      No signature verification is performed. This is the default.
+ * 2 - enforced
+ *      Lockdown the GRUB. Signature verification is performed and
+ *      If signature verification fails, post the errors and stop the boot.
+ */
+#define GRUB_SB_DISABLED        0
+#define GRUB_SB_ENFORCED        2
+
+extern grub_uint32_t
+EXPORT_FUNC(grub_ieee1275_is_secure_boot) (void);
+
+#endif
+
 #endif /* ! GRUB_IEEE1275_HEADER */
