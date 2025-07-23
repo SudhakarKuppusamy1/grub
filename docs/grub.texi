@@ -3280,7 +3280,9 @@ GRUB.  Others may be used freely in GRUB configuration files.
 These variables have special meaning to GRUB.
 
 @menu
+* appendedsig_key_mgmt::
 * biosnum::
+* check_appended_signatures::
 * check_signatures::
 * chosen::
 * cmdpath::
@@ -3331,6 +3333,19 @@ These variables have special meaning to GRUB.
 @end menu
 
 
+@node appendedsig_key_mgmt
+@subsection appendedsig_key_mgmt
+
+This variable controls whether GRUB enforces appended signature validation
+using @code{static} or @code{dynamic} key management. It is automatically
+set by GRUB to @code{static} or @code{dynamic} based on the
+@strong{'ibm,secure-boot'} device tree property and Platform KeyStore(PKS).
+Also, it can be explicitly set to @code{static} or @code{dynamic} by
+executing @code{set appendedsig_key_mgmt} command from the GRUB console
+when the GRUB is not locked down.
+
+@xref{Using appended signatures} for more information.
+
 @node biosnum
 @subsection biosnum
 
@@ -3343,6 +3358,17 @@ this.
 For an alternative approach which also changes BIOS drive mappings for the
 chain-loaded system, @pxref{drivemap}.
 
+@node check_appended_signatures
+@subsection check_appended_signatures
+
+This variable controls whether GRUB enforces appended signature validation on
+loaded kernel and GRUB module files. It is automatically set by GRUB
+to @code{no} or @code{enforce} based on the @strong{'ibm,secure-boot'} device
+tree property. Also, it can be explicitly set to @code{no} or @code{enforce} by
+executing @code{set check_appended_signatures} command from the GRUB console
+when the GRUB is not locked down.
+
+@xref{Using appended signatures} for more information.
 
 @node check_signatures
 @subsection check_signatures
@@ -6414,6 +6440,14 @@ you forget a command, you can run the command @command{help}
 @menu
 * [::                           Check file types and compare values
 * acpi::                        Load ACPI tables
+* append_add_db_cert::          Add trusted certificate to the db list
+* append_add_db_hash::          Add trusted certificate/binary hash to the db list
+* append_add_dbx_cert::         Add distrusted certificate to the dbx list
+* append_add_dbx_hash::         Add distrusted certificate/binary hash to the dbx list
+* append_list_db::              List all trusted certificates from the db list
+* append_list_dbx::             List all distrusted certificates and binary/certificate hashes from the dbx list
+* append_rm_dbx_cert::          Remove distrusted certificate from the db list
+* append_verify::               Verify appended digital signature using db and dbx lists
 * authenticate::                Check whether user is in user list
 * background_color::            Set background color for active terminal
 * background_image::            Load background image for active terminal
@@ -6535,6 +6569,229 @@ Note: The command is not allowed when lockdown is enforced (@pxref{Lockdown}).
       unsigned code.
 @end deffn
 
+@node append_add_db_cert
+@subsection append_add_db_cert
+
+@deffn Command append_add_db_cert <X509_certificate>
+Read X.509 certificate from the file @var{X509_certificate}
+and add it to GRUB's internal db list of trusted certificates.
+These certificates are used to validate appended signatures when the
+environment variable @code{check_appended_signatures} (@pxref{check_appended_signatures})
+is set to @code{enforce} or the @command{append_verify} (@pxref{append_verify})
+command is executed from the GRUB console.
+
+Note: The file @var{X509_certificate} should be in DER-format. When the environment
+      variable @code{check_appended_signatures} is set to @code{enforce},
+      the @command{append_add_db_cert} command only accepts the file @var{X509_certificate}
+      that is signed with an appended signature (@pxref{Signing certificate and hash file}).
+      The signature is verified by appendedsig module. If verification succeeds,
+      the certificate is added to the db list. Otherwise, an error is posted and
+      the certificate is not added.
+      When the environment variable @code{check_appended_signatures} is to @code{no},
+      it accepts files @var{X509_certificate} without an appended signature and the
+      certificate is added to the db list.
+
+Also, note that the adding of the certificate using @command{append_add_db_cert} command
+does not persist across reboots, and this command is available if either static
+or dynamic key management is enabled (@pxref{appendedsig_key_mgmt}).
+
+@xref{Using appended signatures} for more information.
+@end deffn
+
+@node append_add_db_hash
+@subsection append_add_db_hash
+
+@deffn Command append_add_db_hash <hash_file>
+Read binary hash from the file @var{hash_file}
+and add it to GRUB's internal db list of trusted binary hashes. These
+hashes are used to validate the Linux kernel binary hashes when the
+environment variable @code{check_appended_signatures}
+(@pxref{check_appended_signatures}) is set to @code{enforce} or the
+@command{append_verify} (@pxref{append_verify}) command is executed
+from the GRUB console.
+
+Note: The file @var{hash_file} should contain data in binary format. When the
+      environment variable @code{check_appended_signatures} is
+      set to @code{enforce}, the @command{append_add_db_hash} command only accepts
+      the file @var{hash_file} that is signed with an appended signature
+      (@pxref{Signing certificate and hash file}).
+      The signature is verified by appendedsig module. If verification succeeds,
+      the binary hash is added to the db list. Otherwise, an error is posted and
+      the binary hash is not added.
+      When the environment variable @code{check_appended_signatures} is to @code{no},
+      it accepts files @var{hash_file} without an appended signature and the
+      binary hash is added to the db list.
+
+Also, note that the adding of the certificate using @command{append_add_db_hash}
+command does not persist across reboots, and this command is only available when
+dynamic key management is enabled (@pxref{appendedsig_key_mgmt}).
+
+@example
+
+# Generate the hash of the binary file using OpenSSL
+# in binary format. The vmlinux (kernel image) file
+# should be unsigned.
+
+openssl dgst -binary -sha256 -out binary_hash vmlinux
+
+@end example
+
+@xref{Using appended signatures} for more information.
+@end deffn
+
+@node append_add_dbx_cert
+@subsection append_add_dbx_cert
+
+@deffn Command append_add_dbx_cert <X509_certificate>
+Read X.509 certificate from the file @var{X509_certificate}
+and add it to GRUB's internal dbx list of distrusted certificates.
+These certificates are used to ensure that the distrusted certificates
+are rejected during appended signatures validation when the environment
+variable @code{check_appended_signatures} is set to @code{enforce}
+(@pxref{check_appended_signatures}) or the @command{append_verify}
+(@pxref{append_verify}) command is executed from the GRUB console.
+Also, These certificates are used to block adding the distrusted
+certificates to the db list in the future.
+
+Note: The file @var{X509_certificate} should be in DER-format. When the
+      environment variable @code{check_appended_signatures} is set to
+      @code{enforce}, the @command{append_add_dbx_cert} command only accepts
+      the file @var{X509_certificate} that is signed with an appended signature
+      (@pxref{Signing certificate and hash file}).
+      The signature is verified by appendedsig module. If verification succeeds,
+      the certificate is added to the dbx list. Otherwise, an error is posted and
+      the certificate is not added.
+      When the environment variable @code{check_appended_signatures} is to @code{no},
+      it accepts file @var{X509_certificate} without an appended signature and the
+      certificate is added to the db list.
+
+Also, note that the adding of the certificate using @command{append_add_dbx_cert}
+command does not persist across reboots, and this command is only available when
+dynamic key management is enabled (@pxref{appendedsig_key_mgmt}).
+
+@xref{Using appended signatures} for more information.
+@end deffn
+
+@node append_add_dbx_hash
+@subsection append_add_dbx_hash
+
+@deffn Command append_add_dbx_hash [@option{-b}|@option{-c}] <hash_file>
+Read binary/certificate hash from the file @var{hash_file}
+and add it to GRUB's internal dbx list of distrusted binary/certificate hashes.
+These hashes are used to ensure that the distrusted binary hashes/certificates
+are rejected during Linux kernel binary hashes and appended signatures validation
+when the environment variable @code{check_appended_signatures} (@pxref{check_appended_signatures})
+is set to @code{enforce} or the @command{append_verify} (@pxref{append_verify}) command
+is executed from the GRUB console. Also,these hashes are used to block adding the distrusted
+binary hashes and certificates to the db list in the future.
+
+The @option{-b} (@option{--binary-hash}) can be used to specify binary hash file and
+@option{-c} (@option{--cert-hash}) can be used to specify certificate hash file.
+
+Note: The file @var{hash_file} should contain data in binary format. When the environment
+      variable @code{check_appended_signatures} is set to @code{enforce}, the
+      @command{append_add_dbx_hash} command only accepts the file @var{hash_file}
+      that is signed with an appended signature (@pxref{Signing certificate and hash file}).
+      The signature is verified by appendedsig module. If verification succeeds,
+      the binary/certificate hash is added to the db list. Otherwise, an error is posted and
+      the binary/certificate hash is not added.
+      When the environment variable @code{check_appended_signatures} is to @code{no},
+      it accepts the file @var{hash_file} without an appended signature and the
+      binary/certificate hash is added to the db list.
+
+Also, note that the adding of the certificate using @command{append_add_dbx_hash}
+command does not persist across reboots, and this command is only available when
+dynamic key management is enabled (@pxref{appendedsig_key_mgmt}).
+
+@example
+
+# Generate the hash of the binary/certificate file
+# using OpenSSL in binary format. The vmlinux
+# (kernel image) file should be unsigned, kernel.der
+# is certificate.
+
+openssl dgst -binary -sha256 -out cert_hash kernel.der
+
+openssl dgst -binary -sha256 -out binary_hash vmlinux
+
+@end example
+
+@xref{Using appended signatures} for more information.
+@end deffn
+
+@node append_list_db
+@subsection append_list_db
+
+@deffn Command append_list_db
+List all X.509 certificates and binary hashes trusted by GRUB for validating
+appended signatures. The output is a numbered list of certificates and binary hashes,
+showing the certificate's serial number, issuer and Common Name.
+
+Note that the @command{append_list_db} command is available if either static
+or dynamic key management is enabled (@pxref{appendedsig_key_mgmt}).
+
+@xref{Using appended signatures} for more information.
+@end deffn
+
+@node append_list_dbx
+@subsection append_list_dbx
+
+@deffn Command append_list_dbx
+List all the distrusted X.509 certificates and binary/certificate hashes.
+The output is a numbered list of certificates and binary/certificate hashes,
+showing the certificate's serial number, issuer and Common Name.
+
+Note that the @command{append_list_dbx} command is only available when
+dynamic key management is enabled (@pxref{appendedsig_key_mgmt}).
+
+@xref{Using appended signatures} for more information.
+@end deffn
+
+@node append_rm_dbx_cert
+@subsection append_rm_dbx_cert
+
+@deffn Command append_rm_dbx_cert <X509_certificate>
+Read DER-formatted X.509 certificate from the file @var{X509_certificate}
+and remove it from GRUB's internal db list of trusted certificates.
+These certificates are used to ensure that the distrusted certificates
+are rejected during appended signatures validation when the environment
+variable @code{check_appended_signatures} is set to @code{enforce}
+(@pxref{check_appended_signatures}) or the @command{append_verify}
+(@pxref{append_verify}) command is executed from the GRUB console.
+
+Note: The file @var{X509_certificate} should be in DER-format. When the environment
+      variable @code{check_appended_signatures} is set to @code{enforce}, the
+      @command{append_rm_dbx_cert} command only accepts the files @var{X509_certificate}
+      that are signed with an appended signature (@pxref{Signing certificate and hash file}).
+      The signature is verified by appendedsig module. If verification succeeds,
+      the certificate is removed from the db list. Otherwise, an error is posted and
+      the certificate is not removed.
+      When the environment variable @code{check_appended_signatures} is to @code{no},
+      it accepts the file @var{X509_certificate} without an appended signature and
+      certificate is removed from the db list.
+
+Also, note that the removing of the certificate using @command{append_rm_dbx_cert}
+command does not persist across reboots, and this command is only available when
+static key management is enabled (@pxref{appendedsig_key_mgmt}).
+
+@xref{Using appended signatures} for more information.
+@end deffn
+
+@node append_verify
+@subsection append_verify
+
+@deffn Command append_verify <signed_file>
+Verifies an appended signature on @var{signed_file} against the trusted X.509 certificates
+and hashes known to GRUB (@pxref{append_list_db},@pxref{append_list_dbx}, @pxref{append_add_db_cert},
+@pxref{append_add_db_hash}, @pxref{append_add_dbx_hash}, @pxref{append_add_dbx_cert}, and
+@pxref{append_rm_dbx_cert}). Exit code @code{$?} is set to 0 if the signature validates successfully.
+If validation fails, it is set to a non-zero value.
+
+Note that the @command{append_verify} command is available if either static
+or dynamic key management is enabled (@pxref{appendedsig_key_mgmt}).
+
+@xref{Using appended signatures} for more information.
+@end deffn
 
 @node authenticate
 @subsection authenticate
@@ -7307,6 +7564,15 @@ configurations, but to allow the user to select from among multiple
 configurations, and to enable ``one-shot'' boot attempts and
 ``savedefault'' behavior.  @xref{Using GPG-style digital signatures}, for more
 information.
+
+On Linux on Power LPAR, the signature validation on the environment block file
+is not supported with or without the @option{--skip-sig} option.
+If the environment variable @code{check_appended_signatures} value is set to
+@code{enforce} and GRUB is in locked down mode, the user is not allowed to set
+@code{check_appended_signatures} to @code{no} and @code{appendedsig_key_mgmt}
+to @code{static} or @code{dynamic} either directly using @command{load_env}
+command or via environment block file. @xref{Using appended signatures}, for
+more information.
 @end deffn
 
 
@@ -8670,11 +8936,13 @@ environment variables and commands are listed in the same order.
 @menu
 * Authentication and authorisation::   Users and access control
 * Using GPG-style digital signatures:: Booting digitally signed code
+* Using appended signatures::          An alternative approach to booting digitally signed code
 * UEFI secure boot and shim::          Booting digitally signed PE files
 * Secure Boot Advanced Targeting::     Embedded information for generation number based revocation
 * Measured Boot::                      Measuring boot components
 * Lockdown::                           Lockdown when booting on a secure setup
 * TPM2 key protector::                 Managing disk key with TPM2 key protector
+* Signing certificate and hash file::  Certificate and hash file signing
 * Signing GRUB itself::                Ensuring the integrity of the GRUB core image
 @end menu
 
@@ -8834,6 +9102,113 @@ the machine from altering that machine's firmware (e.g., Coreboot
 or BIOS) configuration to cause the machine to boot from a different
 (attacker-controlled) device.  GRUB is at best only one link in a
 secure boot chain.
+
+@node Using appended signatures
+@section Using appended signatures in GRUB
+
+GRUB supports verifying Linux-style 'appended signatures' for Linux on Power LPAR
+secure boot. Appended signatures are PKCS#7 messages containing a signature over the
+contents of a file, plus some metadata, appended to the end of a file. A file
+with an appended signature ends with the magic string:
+
+@example
+~Module signature appended~\n
+@end example
+
+where @code{\n} represents the line feed character, @code{0x0a}.
+
+Linux on Power LPAR secure boot is controlled by @strong{'ibm,secure-boot'}
+device tree property and if this property is set to @code{2} (@samp{2 - enforced}),
+GRUB enters lockdown. There are three secure boot modes. They are
+
+@itemize
+@item @samp{0 - disabled}: Secure boot is disabled. This is the default.
+@item @samp{1 - audit}: Enforce signature verification by setting
+      @code{check_appended_signatures} (@pxref{check_appended_signatures}) to
+      @code{enforce} and do not to lockdown the GRUB.
+@item @samp{2 - enforced}: Lockdown the GRUB and enforce signature verification by setting
+      @code{check_appended_signatures} (@pxref{check_appended_signatures}) to @code{enforce}.
+@end itemize
+
+Note that Linux on Power LPAR only supports @samp{0 - disabled} and @samp{2 - enforced}.
+
+To enable appended signature verification, load the appendedsig module and an
+X.509 certificate for verification. Building the appendedsig module into the
+core GRUB image is recommended.
+
+Key management is controlled by the @code{appendedsig_key_mgmt} (@pxref{appendedsig_key_mgmt})
+variable.
+
+@itemize
+@item @samp{static}: Enforce static key management signature verification. This is the default.
+      When the GRUB is locked down, user cannot change the value by setting the
+      @code{appendedsig_key_mgmt} variable back to @samp{dynamic}.
+@item @samp{dynamic}: Enforce dynamic key management signature verification. When the GRUB is
+      locked down, user cannot change the value by setting the @code{appendedsig_key_mgmt}
+      variable back to @samp{static}.
+@end itemize
+
+In static key management mode, certificates will be built into the core image using
+the @code{--x509} parameter to @command{grub-install} or @command{grub-mkimage}.
+It is possible to list the trusted certificates available at boot time using
+@command{append_list_db} (@pxref{append_list_db}). The distrusted certificates can be
+explicitly removed from the db using the @command{append_rm_dbx_cert} (@pxref{append_rm_dbx_cert}).
+The trusted certificates can be explicitly added to the db using the
+@command{append_add_db_cert} (@pxref{append_add_db_cert}).
+
+
+In dynamic key management mode, db and dbx are read from the Platform KeyStore(PKS). If
+db is not present in PKS, static key (built-in keys) is used as the default key.
+It is possible to list the trusted certificates and binary hashes available at boot time using
+@command{append_list_dbx} (@pxref{append_list_db}) and list the distrusted
+certificates and binary/certificate hashes available at boot time using @command{append_list_dbx}
+(@pxref{append_list_dbx}). The trusted certificates and binary hashes can be explicitly added
+to the db using the @command{append_add_db_cert} (@pxref{append_add_db_cert}) and
+@command{append_add_db_hash} (@pxref{append_add_db_hash}). The distrusted certificates can be
+explicitly added to the dbx using the @command{append_add_dbx_cert} (@pxref{append_add_dbx_cert})
+and the distrusted certificate/binary hases can be explicitly added to the dbx using the
+@command{append_add_dbx_hash} (@pxref{append_add_dbx_hash}).
+
+Enforcement of signature verification is controlled by the
+@code{check_appended_signatures} (@pxref{check_appended_signatures}) variable.
+
+@itemize
+@item @samp{no}: No verification is performed. This is the default.
+@item @samp{enforce}: Signature verification is performed and if signature verification fails,
+      post the errors and stop the boot. Signature verification cannot be disabled by setting
+      the @code{check_appended_signatures} variable back to @samp{no}.
+@end itemize
+
+A file can be explicitly verified using the @command{append_verify} (@pxref{append_verify}).
+
+Only signatures generated using SHA-256 or SHA-512 hash algorithms are supported,
+and only RSA signatures generated using 2048, 3076, or 4096 bit key are supported.
+Only binary/certificate hash generated using SHA-256, SHA-384, or SHA-512 algorithms
+are supported.
+
+A file can be signed with the @command{sign-file} utility supplied with the
+Linux kernel source. For example, if you have @code{signing.key} as the private
+key and @code{certificate.der} as the X.509 certificate containing the public key:
+
+@example
+sign-file SHA256 signing.key certificate.der vmlinux vmlinux.signed
+@end example
+
+Once signature verification is turned on, the following file types must carry
+appended signatures:
+
+@enumerate
+@item Linux kernels
+@item GRUB modules, except those built in to the core image
+@item Any new certificate and binary hash files to be trusted
+@item Any new certificate/binary hash files to be distrusted
+@end enumerate
+
+When GRUB is locked down (when secure boot modes is @code{enforced}),
+signature verification cannot be @strong{disabled} by setting the
+@code{check_appended_signatures} (@pxref{check_appended_signatures}) variable
+to @code{no} or using the @command{load_env} (@pxref{load_env}) command from
+the GRUB console.
 
 @node UEFI secure boot and shim
 @section UEFI secure boot and shim support
@@ -9363,6 +9738,33 @@ it is an optional step. Setting it up requires additional manual intervention,
 which increases the risk of password leakage during the process. Moreover, the
 superuser list must be well maintained, and the password used cannot be
 synchronized with LUKS key rotation.
+
+@node Signing certificate and hash file
+@section Signing certificate and hash file
+The X.509 certificate (public key) file and hash file (binary/certificate hash file)
+can be signed with a Linux kernel module-style appended signature.
+
+The signer.key is private key used for signing, signer.der is corresponding
+public key (certificate) used for signature verification.
+
+@itemize
+@item Signing the X.509 certificate file using @file{sign-file}.
+The kernel.der is your X.509 certificate file.
+@example
+
+sign-file SHA256 signer.key signer.der kernel.der \
+  kernel.der.signed
+
+@end example
+@item Signing the hash file using @file{sign-file}.
+The binary_hash is your hash file.
+@example
+
+sign-file SHA256 signer.key signer.der binary_hash \
+  binary_hash.signed
+
+@end example
+@end itemize
 
 @node Signing GRUB itself
 @section Signing GRUB itself
