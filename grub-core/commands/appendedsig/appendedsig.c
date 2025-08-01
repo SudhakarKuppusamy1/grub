@@ -1166,11 +1166,11 @@ appendedsig_init (grub_file_t io __attribute__ ((unused)), enum grub_file_type t
          * This needs to be verified or blocked.
          */
       case GRUB_FILE_TYPE_LINUX_KERNEL:
+      case GRUB_FILE_TYPE_LINUX_INITRD:
       case GRUB_FILE_TYPE_GRUB_MODULE:
         /*
-         * Appended signatures are only defined for ELF binaries.
          * Out of an abundance of caution, we only verify Linux kernels
-         * and GRUB modules at this point.
+         * initrd/initramfs, and GRUB modules at this point.
          */
         *flags = GRUB_VERIFY_FLAGS_SINGLE_CHUNK;
         return GRUB_ERR_NONE;
