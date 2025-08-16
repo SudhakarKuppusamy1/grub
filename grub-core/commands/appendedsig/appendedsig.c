@@ -33,7 +33,8 @@
 #include <libtasn1.h>
 #include <grub/env.h>
 #include <grub/lockdown.h>
-
+#include <grub/efi/pks.h>
+#include <grub/powerpc/ieee1275/platform_keystore.h>
 #include "appendedsig.h"
 
 GRUB_MOD_LICENSE ("GPLv3+");
@@ -80,10 +81,21 @@ struct grub_database
 {
   struct x509_certificate *certs; /* Certificates. */
   grub_uint32_t cert_entries;     /* Number of certificates. */
+  grub_uint8_t **hashes;          /* Certificate/binary hashes. */
+  grub_size_t *hash_size;         /* Size of certificate/binary hashes. */
+  grub_uint32_t hash_entries;     /* Number of certificate/binary hashes. */
 };
 
 /* The db list is used to validate appended signatures. */
-struct grub_database db = {.certs = NULL, .cert_entries = 0};
+struct grub_database db = {.certs = NULL, .cert_entries = 0, .hashes = NULL,
+                           .hash_size = NULL, .hash_entries = 0};
+
+/*
+ * The dbx list is used to ensure that the distrusted certificates/kernel binaries are
+ * rejected during appended signatures/hashes validation.
+ */
+struct grub_database dbx = {.certs = NULL, .cert_entries = 0, .hashes = NULL,
+                            .hash_size = NULL, .hash_entries = 0};
 
 /*
  * Signature verification flag (check_sigs).
@@ -115,6 +127,187 @@ static struct grub_fs pseudo_fs = {
   .name = "pseudo",
   .fs_read = pseudo_read
 };
+
+
+/*
+ * GUID can be used to determine the hashing function and
+ * generate the hash using determined hashing function.
+ */
+static grub_err_t
+get_hash (const grub_packed_guid_t *guid, const grub_uint8_t *data, const grub_size_t data_size,
+          grub_uint8_t *hash, grub_size_t *hash_size)
+{
+  gcry_md_spec_t *hash_func = NULL;
+
+  if (guid == NULL)
+    return grub_error (GRUB_ERR_OUT_OF_RANGE, "GUID is not available");
+
+  if (grub_memcmp (guid, &GRUB_PKS_CERT_SHA256_GUID, GRUB_PACKED_GUID_SIZE) == 0 ||
+      grub_memcmp (guid, &GRUB_PKS_CERT_X509_SHA256_GUID, GRUB_PACKED_GUID_SIZE) == 0)
+    hash_func = &_gcry_digest_spec_sha256;
+  else if (grub_memcmp (guid, &GRUB_PKS_CERT_SHA384_GUID, GRUB_PACKED_GUID_SIZE) == 0 ||
+           grub_memcmp (guid, &GRUB_PKS_CERT_X509_SHA384_GUID, GRUB_PACKED_GUID_SIZE) == 0)
+    hash_func = &_gcry_digest_spec_sha384;
+  else if (grub_memcmp (guid, &GRUB_PKS_CERT_SHA512_GUID, GRUB_PACKED_GUID_SIZE) == 0 ||
+           grub_memcmp (guid, &GRUB_PKS_CERT_X509_SHA512_GUID, GRUB_PACKED_GUID_SIZE) == 0)
+    hash_func = &_gcry_digest_spec_sha512;
+  else
+    return grub_error (GRUB_ERR_OUT_OF_RANGE, "unsupported GUID hash");
+
+  grub_memset (hash, 0, MAX_HASH_SIZE);
+  grub_crypto_hash (hash_func, hash, data, data_size);
+  *hash_size =  hash_func->mdlen;
+
+  return GRUB_ERR_NONE;
+}
+
+static grub_err_t
+generate_cert_hash (const grub_size_t cert_hash_size, const grub_uint8_t *data,
+                    const grub_size_t data_size, grub_uint8_t *hash, grub_size_t *hash_size)
+{
+  grub_packed_guid_t guid = { 0 };
+
+  /* support SHA256, SHA384 and SHA512 for certificate hash */
+  if (cert_hash_size == 32)
+    grub_memcpy (&guid, &GRUB_PKS_CERT_X509_SHA256_GUID, GRUB_PACKED_GUID_SIZE);
+  else if (cert_hash_size == 48)
+    grub_memcpy (&guid, &GRUB_PKS_CERT_X509_SHA384_GUID, GRUB_PACKED_GUID_SIZE);
+  else if (cert_hash_size == 64)
+    grub_memcpy (&guid, &GRUB_PKS_CERT_X509_SHA512_GUID, GRUB_PACKED_GUID_SIZE);
+  else
+    {
+      grub_dprintf ("appendedsig", "unsupported hash type (%" PRIuGRUB_SIZE ") and "
+                    "skipped\n", cert_hash_size);
+      return GRUB_ERR_UNKNOWN_COMMAND;
+    }
+
+  return get_hash (&guid, data, data_size, hash, hash_size);
+}
+
+/* Check the hash presence in the dbx list. */
+static bool
+is_hash_present_in_dbx (grub_uint8_t *const hash, const grub_size_t hash_size)
+{
+  grub_uint32_t i;
+
+  for (i = 0; i < dbx.hash_entries; i++)
+    {
+      if (hash_size == dbx.hash_size[i] &&
+          grub_memcmp (dbx.hashes[i], hash, hash_size) == 0)
+        {
+          grub_dprintf ("appendedsig", "the hash (%02x%02x%02x%02x) is ignored"
+                        " because it is on the dbx list\n", hash[0], hash[1],
+                        hash[2], hash[3]);
+          return true;
+        }
+    }
+
+  return false;
+}
+
+/* Check the hash presence in the db list. */
+static bool
+is_hash_present_in_db (const grub_uint8_t *hash_data, const grub_size_t hash_data_size)
+{
+  grub_uint32_t i;
+
+  for (i = 0; i < db.hash_entries; i++)
+    if (grub_memcmp (db.hashes[i], hash_data, hash_data_size) == 0)
+      return true;
+
+  return false;
+}
+
+/* Add the certificate/binary hash into the db/dbx list. */
+static grub_err_t
+add_hash (grub_uint8_t *const data, const grub_size_t data_size,
+          struct grub_database *database, const bool is_db)
+{
+  grub_uint8_t **hashes;
+  grub_size_t *hash_size;
+
+  if (data == NULL || data_size == 0)
+    return grub_error (GRUB_ERR_OUT_OF_RANGE, "certificate/binary-hash data or size is not available");
+
+  if (is_hash_present_in_dbx (data, data_size) == true)
+    {
+      grub_dprintf ("appendedsig", "cannot add a hash, as it is present in the %s list",
+                    ((is_db == true) ? "db" : "dbx"));
+
+      return ((is_db == true) ? GRUB_ERR_ACCESS_DENIED : GRUB_ERR_EXISTS);
+    }
+
+  if (is_db == true)
+    {
+      if (is_hash_present_in_db (data, data_size) == true)
+        return grub_error (GRUB_ERR_EXISTS,
+                           "cannot a add hash, as it is present in the db list");
+    }
+
+  hashes = grub_realloc (database->hashes, sizeof (grub_uint8_t *) * (database->hash_entries + 1));
+  if (hashes == NULL)
+    return grub_error (GRUB_ERR_OUT_OF_MEMORY, "out of memory");
+
+  hash_size = grub_realloc (database->hash_size, sizeof (grub_size_t) * (database->hash_entries + 1));
+  if (hash_size == NULL)
+    {
+      /*
+       * Allocated memory will be freed by
+       * free_db_list/free_dbx_list.
+       */
+      hashes[database->hash_entries] = NULL;
+      database->hashes = hashes;
+      database->hash_entries++;
+
+      return grub_error (GRUB_ERR_OUT_OF_MEMORY, "out of memory");
+    }
+
+  hashes[database->hash_entries] = grub_malloc (data_size);
+  if (hashes[database->hash_entries] != NULL)
+    grub_memcpy (hashes[database->hash_entries], data, data_size);
+
+  hash_size[database->hash_entries] = data_size;
+  database->hash_size = hash_size;
+
+  if (hashes[database->hash_entries] == NULL)
+    return grub_error (GRUB_ERR_OUT_OF_MEMORY, "out of memory");
+
+  grub_dprintf ("appendedsig",
+                "added the hash %02x%02x%02x%02x...\n with size of %" PRIuGRUB_SIZE " to the %s list\n",
+                data[0], data[1], data[2], data[3], data_size, ((is_db == true) ? "db" : "dbx"));
+
+  database->hashes = hashes;
+  database->hash_entries++;
+
+  return GRUB_ERR_NONE;
+}
+
+static bool
+is_hash (const grub_packed_guid_t *guid)
+{
+  /* GUID type of the binary hash. */
+  if (grub_memcmp (guid, &GRUB_PKS_CERT_SHA256_GUID, GRUB_PACKED_GUID_SIZE) == 0 ||
+      grub_memcmp (guid, &GRUB_PKS_CERT_SHA384_GUID, GRUB_PACKED_GUID_SIZE) == 0 ||
+      grub_memcmp (guid, &GRUB_PKS_CERT_SHA512_GUID, GRUB_PACKED_GUID_SIZE) == 0)
+    return true;
+
+  /* GUID type of the certificate hash. */
+  if (grub_memcmp (guid, &GRUB_PKS_CERT_X509_SHA256_GUID, GRUB_PACKED_GUID_SIZE) == 0 ||
+      grub_memcmp (guid, &GRUB_PKS_CERT_X509_SHA384_GUID, GRUB_PACKED_GUID_SIZE) == 0 ||
+      grub_memcmp (guid, &GRUB_PKS_CERT_X509_SHA512_GUID, GRUB_PACKED_GUID_SIZE) == 0)
+    return true;
+
+  return false;
+}
+
+static bool
+is_x509 (const grub_packed_guid_t *guid)
+{
+  if (grub_memcmp (guid, &GRUB_PKS_CERT_X509_GUID, GRUB_PACKED_GUID_SIZE) == 0)
+    return true;
+
+  return false;
+}
 
 /*
  * We cannot use hexdump() to display hash data because it is typically
@@ -183,6 +376,16 @@ add_cert_fingerprint (const grub_uint8_t *data, const grub_size_t data_size,
   hash_func = &_gcry_digest_spec_sha256;
   grub_memset (&cert->fingerprint[0], 0, MAX_HASH_SIZE);
   grub_crypto_hash (hash_func, &cert->fingerprint[0], data, data_size);
+
+  /* Add SHA384 hash of certificate. */
+  hash_func = &_gcry_digest_spec_sha384;
+  grub_memset (&cert->fingerprint[1], 0, MAX_HASH_SIZE);
+  grub_crypto_hash (hash_func, &cert->fingerprint[1], data, data_size);
+
+  /* Add SHA512 hash of certificate. */
+  hash_func = &_gcry_digest_spec_sha512;
+  grub_memset (&cert->fingerprint[2], 0, MAX_HASH_SIZE);
+  grub_crypto_hash (hash_func, &cert->fingerprint[2], data, data_size);
 }
 
 static bool
@@ -200,6 +403,46 @@ is_cert_match (const struct x509_certificate *cert1, const struct x509_certifica
 }
 
 static bool
+is_cert_present_in_dbx (const struct x509_certificate *cert_in)
+{
+  struct x509_certificate *cert;
+
+  for (cert = dbx.certs; cert; cert = cert->next)
+    if (is_cert_match (cert, cert_in) == true)
+      return true;
+
+  return false;
+}
+
+/* Check the certificate hash presence in the dbx list. */
+static bool
+is_cert_hash_present_in_dbx (const grub_uint8_t *data, const grub_size_t data_size)
+{
+  grub_err_t rc;
+  grub_uint32_t i;
+  grub_size_t cert_hash_size = 0;
+  grub_uint8_t cert_hash[MAX_HASH_SIZE] = { 0 };
+
+  for (i = 0; i < dbx.hash_entries; i++)
+    {
+      rc = generate_cert_hash (dbx.hash_size[i], data, data_size, cert_hash, &cert_hash_size);
+      if (rc != GRUB_ERR_NONE)
+        continue;
+
+      if (cert_hash_size == dbx.hash_size[i] &&
+          grub_memcmp (dbx.hashes[i], cert_hash, cert_hash_size) == 0)
+        {
+          grub_dprintf ("appendedsig", "a certificate (%02x%02x%02x%02x) is ignored "
+                        "because this certificate hash is on the dbx list\n",
+                        cert_hash[0], cert_hash[1], cert_hash[2], cert_hash[3]);
+          return true;
+        }
+    }
+
+  return false;
+}
+
+static bool
 is_cert_present_in_db (const struct x509_certificate *cert_in)
 {
   struct x509_certificate *cert;
@@ -211,10 +454,13 @@ is_cert_present_in_db (const struct x509_certificate *cert_in)
   return false;
 }
 
-/* Add the certificate into the db list */
+/*
+ * Add the certificate into the db list if it is not present in the dbx and db list
+ * when is_db is true. Add the certificate into the dbx list when is_db is false.
+ */
 static grub_err_t
 add_certificate (const grub_uint8_t *data, const grub_size_t data_size,
-                 struct grub_database *database)
+                 struct grub_database *database, const bool is_db)
 {
   grub_err_t rc;
   struct x509_certificate *cert;
@@ -229,31 +475,63 @@ add_certificate (const grub_uint8_t *data, const grub_size_t data_size,
   rc = parse_x509_certificate (data, data_size, cert);
   if (rc != GRUB_ERR_NONE)
     {
-      grub_dprintf ("appendedsig", "cannot add a certificate CN='%s' to the db list\n",
-                    cert->subject);
+      grub_dprintf ("appendedsig", "cannot add a certificate CN='%s' to the %s list\n",
+                    cert->subject, ((is_db == true) ? "db" : "dbx"));
       grub_free (cert);
       return rc;
     }
 
   add_cert_fingerprint (data, data_size, cert);
 
-  if (is_cert_present_in_db (cert) == true)
+  if (is_db == false && grub_pks_keystore.use_keystore == true)
     {
-      grub_dprintf ("appendedsig",
-                    "cannot add a certificate CN='%s', as it is present in the db list",
-                    cert->subject);
-      certificate_release (cert);
-      grub_free (cert);
+      if (is_cert_present_in_dbx (cert) == true)
+        {
+          grub_dprintf ("appendedsig",
+                        "cannot add a certificate CN='%s', as it is present in the dbx list",
+                        cert->subject);
+          rc = GRUB_ERR_EXISTS;
+          goto clean_exit;
+        }
+    }
+  else
+    {
+      /* Only checks the certificate against dbx if dynamic key management is enabled. */
+      if (grub_pks_keystore.use_keystore == true)
+        {
+          if (is_cert_hash_present_in_dbx (data, data_size) == true ||
+              is_cert_present_in_dbx (cert) == true)
+            {
+              grub_dprintf ("appendedsig",
+                            "cannot add a certificate CN='%s', as it is present in the dbx list",
+                            cert->subject);
+              rc = GRUB_ERR_ACCESS_DENIED;
+              goto clean_exit;
+            }
+        }
 
-      return GRUB_ERR_EXISTS;
+      if (is_cert_present_in_db (cert) == true)
+        {
+          grub_dprintf ("appendedsig",
+                        "cannot add a certificate CN='%s', as it is present in the db list",
+                        cert->subject);
+          rc = GRUB_ERR_EXISTS;
+          goto clean_exit;
+        }
     }
 
-  grub_dprintf ("appendedsig", "added a certificate CN='%s' to the db list\n",
-                cert->subject);
+  grub_dprintf ("appendedsig", "added a certificate CN='%s' to the %s list\n",
+                cert->subject, ((is_db == true) ? "db" : "dbx"));
 
   cert->next = database->certs;
   database->certs = cert;
   database->cert_entries++;
+
+  return rc;
+
+ clean_exit:
+  certificate_release (cert);
+  grub_free (cert);
 
   return rc;
 }
@@ -590,7 +868,7 @@ grub_cmd_db_cert (grub_command_t cmd __attribute__ ((unused)), int argc, char **
   if (check_sigs == true && grub_is_lockdown () == GRUB_LOCKDOWN_ENABLED)
     cert_data_size -= append_sig_len;
 
-  err = add_certificate (cert_data, cert_data_size, &db);
+  err = add_certificate (cert_data, cert_data_size, &db, true);
   grub_free (cert_data);
   if (err != GRUB_ERR_NONE)
     return err;
@@ -669,6 +947,68 @@ grub_cmd_list_db (grub_command_t cmd __attribute__ ((unused)), int argc __attrib
   return GRUB_ERR_NONE;
 }
 
+/* Add the X.509 certificates/binary hash to the db list from PKS. */
+static grub_err_t
+create_db_list (void)
+{
+  grub_err_t rc;
+  grub_uint32_t i;
+
+  for (i = 0; i < grub_pks_keystore.db_entries; i++)
+    {
+      if (is_hash (&grub_pks_keystore.db[i].guid) == true)
+        {
+          rc = add_hash (grub_pks_keystore.db[i].data,
+                         grub_pks_keystore.db[i].data_size, &db, true);
+          if (rc == GRUB_ERR_OUT_OF_MEMORY)
+            return rc;
+        }
+      else if (is_x509 (&grub_pks_keystore.db[i].guid) == true)
+        {
+          rc = add_certificate (grub_pks_keystore.db[i].data,
+                                grub_pks_keystore.db[i].data_size, &db, true);
+          if (rc == GRUB_ERR_OUT_OF_MEMORY)
+            return rc;
+        }
+      else
+        grub_dprintf ("appendedsig", "unsupported signature data type and "
+                      "skipped (%u)\n", i + 1);
+    }
+
+  return GRUB_ERR_NONE;
+}
+
+/* Add the certificates and certificate/binary hash to the dbx list from PKS. */
+static grub_err_t
+create_dbx_list (void)
+{
+  grub_err_t rc;
+  grub_uint32_t i;
+
+  for (i = 0; i < grub_pks_keystore.dbx_entries; i++)
+    {
+      if (is_x509 (&grub_pks_keystore.dbx[i].guid) == true)
+        {
+          rc = add_certificate (grub_pks_keystore.dbx[i].data,
+                                grub_pks_keystore.dbx[i].data_size, &dbx, false);
+          if (rc == GRUB_ERR_OUT_OF_MEMORY)
+            return rc;
+        }
+      else if (is_hash (&grub_pks_keystore.dbx[i].guid) == true)
+        {
+          rc = add_hash (grub_pks_keystore.dbx[i].data,
+                         grub_pks_keystore.dbx[i].data_size, &dbx, false);
+          if (rc != GRUB_ERR_NONE)
+            return rc;
+        }
+      else
+        grub_dprintf ("appendedsig", "unsupported signature data type and "
+                      "skipped (%u)\n", i + 1);
+    }
+
+  return GRUB_ERR_NONE;
+}
+
 /*
  * Extract the X.509 certificates from the ELF Note header,
  * parse it, and add it to the db list.
@@ -702,11 +1042,35 @@ build_static_db_list (void)
       else if (err != GRUB_ERR_NONE)
         continue;
 
-      err = add_certificate (cert_data, cert_data_size, &db);
+      err = add_certificate (cert_data, cert_data_size, &db, true);
       grub_free (cert_data);
       if (err == GRUB_ERR_OUT_OF_MEMORY)
         return;
     }
+}
+
+/*
+ * Extract trusted and distrusted keys from PKS and store them in
+ * the db and dbx list.
+ */
+static void
+build_pks_keystore (void)
+{
+  grub_err_t err;
+
+  err = create_dbx_list ();
+  if (err != GRUB_ERR_NONE)
+    grub_printf ("warning: dbx list might not be fully populated\n");
+
+  err = create_db_list ();
+  if (err != GRUB_ERR_NONE)
+    grub_printf ("warning: db list might not be fully populated\n");
+
+  grub_pks_free_keystore ();
+  grub_dprintf ("appendedsig", "the db list now has %u keys\n"
+                "the dbx list now has %u keys\n",
+                db.hash_entries + db.cert_entries,
+                dbx.hash_entries + dbx.cert_entries);
 }
 
 /* Free db list memory */
@@ -714,6 +1078,7 @@ static void
 free_db_list (void)
 {
   struct x509_certificate *cert;
+  grub_uint32_t i;
 
   while (db.certs != NULL)
     {
@@ -723,7 +1088,35 @@ free_db_list (void)
       grub_free (cert);
     }
 
+  for (i = 0; i < db.hash_entries; i++)
+    grub_free (db.hashes[i]);
+
+  grub_free (db.hashes);
+  grub_free (db.hash_size);
   grub_memset (&db, 0, sizeof (struct grub_database));
+}
+
+/* Free dbx list memory */
+static void
+free_dbx_list (void)
+{
+  struct x509_certificate *cert;
+  grub_uint32_t i;
+
+  while (dbx.certs != NULL)
+    {
+      cert = dbx.certs;
+      dbx.certs = dbx.certs->next;
+      certificate_release (cert);
+      grub_free (cert);
+    }
+
+  for (i = 0; i < dbx.hash_entries; i++)
+    grub_free (dbx.hashes[i]);
+
+  grub_free (dbx.hashes);
+  grub_free (dbx.hash_size);
+  grub_memset (&dbx, 0, sizeof (struct grub_database));
 }
 
 static const char *
@@ -763,6 +1156,55 @@ grub_env_write_sec (struct grub_env_var *var __attribute__ ((unused)), const cha
   if (ret == NULL)
     grub_error (GRUB_ERR_OUT_OF_MEMORY, "could not duplicate a string %s",
                 grub_env_read_sec (NULL, NULL));
+
+  return ret;
+}
+
+static const char *
+grub_env_read_key_mgmt (struct grub_env_var *var __attribute__ ((unused)),
+                        const char *val __attribute__ ((unused)))
+{
+  if (grub_pks_keystore.use_keystore == true)
+    return "dynamic";
+
+  return "static";
+}
+
+static char *
+grub_env_write_key_mgmt (struct grub_env_var *var __attribute__ ((unused)), const char *val)
+{
+  char *ret;
+
+  /*
+   * Do not allow the value to be changed if check_sigs is set to enforce and
+   * GRUB is locked down.
+   */
+  if (check_sigs == true && grub_is_lockdown () == GRUB_LOCKDOWN_ENABLED)
+    {
+      ret = grub_strdup (grub_env_read_key_mgmt (NULL, NULL));
+      if (ret == NULL)
+        grub_error (GRUB_ERR_OUT_OF_MEMORY, "out of memory");
+
+      return ret;
+    }
+
+  if ((*val == '1') || (*val == 'd'))
+    {
+      /*
+       * If dynamic key management is disabled and PKS support is available,
+       * load the PKS.
+       */
+      if (grub_pks_keystore.pks_supported == true && grub_pks_keystore.use_keystore == false)
+        build_pks_keystore ();
+
+      grub_pks_keystore.use_keystore = true;
+    }
+  else if ((*val == '0') || (*val == 's'))
+    grub_pks_keystore.use_keystore = false;
+
+  ret = grub_strdup (grub_env_read_key_mgmt (NULL, NULL));
+  if (ret == NULL)
+    grub_error (GRUB_ERR_OUT_OF_MEMORY, "out of memory");
 
   return ret;
 }
@@ -877,15 +1319,45 @@ GRUB_MOD_INIT (appendedsig)
    */
   grub_register_variable_hook ("check_appended_signatures", grub_env_read_sec, grub_env_write_sec);
   grub_env_export ("check_appended_signatures");
+  /*
+   * This is appended signature key management environment variable.
+   * It is automatically set to "static" or "dynamic" based on the
+   * ’ibm,secure-boot’ device tree property and Platform KeyStore
+   * (grub_pks_use_keystore).
+   *
+   * "static": Enforce static key management signature verification.
+   *           This is the default. When the GRUB is locked down,
+   *           user cannot change the value by setting the
+   *           appendedsig_key_mgmt variable back to "dynamic".
+   *
+   * "dynamic": Enforce dynamic key management signature verification.
+   *            When the GRUB is locked down, user cannot change the value
+   *            by setting the appendedsig_key_mgmt variable back to "static".
+   */
+  grub_register_variable_hook ("appendedsig_key_mgmt", grub_env_read_key_mgmt,
+                               grub_env_write_key_mgmt);
+  grub_env_export ("appendedsig_key_mgmt");
 
   rc = asn1_init ();
   if (rc != ASN1_SUCCESS)
     grub_fatal ("error initing ASN.1 data structures: %d: %s\n", rc, asn1_strerror (rc));
 
-  /* Extract trusted keys from ELF Note and store them in the db. */
-  build_static_db_list ();
-  grub_dprintf ("appendedsig", "the db list now has %u static keys\n",
-                db.cert_entries);
+  /*
+   * If signature verification is enabled with the dynamic key management,
+   * load the Platform KeyStore(PKS).
+   */
+  if (grub_pks_keystore.use_keystore == true)
+    build_pks_keystore ();
+  /*
+   * If signature verification is enabled with the static key management,
+   * extract trusted keys from ELF Note and store them in the db list.
+   */
+  else if (grub_pks_keystore.use_keystore == false)
+    {
+      build_static_db_list ();
+      grub_dprintf ("appendedsig", "the db list now has %u static keys\n",
+                    db.cert_entries);
+    }
 
   register_appended_signatures_cmd ();
   grub_verifier_register (&grub_appendedsig_verifier);
@@ -900,8 +1372,11 @@ GRUB_MOD_FINI (appendedsig)
    */
 
   free_db_list ();
+  free_dbx_list ();
   grub_register_variable_hook ("check_appended_signatures", NULL, NULL);
   grub_env_unset ("check_appended_signatures");
+  grub_register_variable_hook ("appendedsig_key_mgmt", NULL, NULL);
+  grub_env_unset ("appendedsig_key_mgmt");
   grub_verifier_unregister (&grub_appendedsig_verifier);
   unregister_appended_signatures_cmd ();
 }
