@@ -182,9 +182,15 @@ grub_env_write_key (struct grub_env_var *var __attribute__ ((unused)), const cha
   if (check_sigs == false)
     {
       if ((*val == '1') || (*val == 'd'))
-        grub_pks_use_keystore = true;
+        {
+          grub_pks_keystore.use_static_keys = true;
+          grub_pks_use_keystore = true;
+        }
       else if ((*val == '0') || (*val == 's'))
-        grub_pks_use_keystore = false;
+        {
+          grub_pks_keystore.use_static_keys = false;
+          grub_pks_use_keystore = false;
+        }
     }
 
   ret = grub_strdup (grub_env_read_key (NULL, NULL));
@@ -1176,6 +1182,23 @@ free_dbx_list (void)
   grub_memset (&dbx, 0, sizeof (struct grub_database));
 }
 
+static grub_err_t
+load_static_key (struct grub_file pseudo_file)
+{
+  grub_err_t err;
+  grub_uint8_t *cert_data = NULL;
+  grub_size_t cert_data_size = 0;
+
+  err = file_read_whole (&pseudo_file, &cert_data, &cert_data_size);
+  if (err != GRUB_ERR_NONE)
+    return err;
+
+  err = add_certificate (cert_data, cert_data_size, &db, true);
+  grub_free (cert_data);
+
+  return err;
+}
+
 /*
  * Extract the X.509 certificates from the ELF Note header,
  * parse it, and add it to the db list.
@@ -1202,22 +1225,33 @@ build_static_db_list (void)
       grub_dprintf ("appendedsig", "found an X.509 certificate, size=%" PRIuGRUB_UINT64_T "\n",
                     pseudo_file.size);
 
-      err = read_cert_from_file (&pseudo_file, &cert);
-      if (err == GRUB_ERR_OUT_OF_MEMORY)
-        return;
-      else if (err != GRUB_ERR_NONE)
+      if (grub_pks_use_keystore == true && grub_pks_keystore.use_static_keys == true)
         {
-          grub_dprintf ("appendedsig",
-                        "warning: cannot add a certificate %u to the db list\n",
-                        db.cert_entries + 1);
-          continue;
+          err = load_static_key (pseudo_file);
+          if (err == GRUB_ERR_OUT_OF_MEMORY)
+            return;
+          else if (err != GRUB_ERR_NONE)
+            continue;
         }
+      else
+        {
+          err = read_cert_from_file (&pseudo_file, &cert);
+          if (err == GRUB_ERR_OUT_OF_MEMORY)
+            return;
+          else if (err != GRUB_ERR_NONE)
+            {
+              grub_dprintf ("appendedsig",
+                            "warning: cannot add a certificate %u to the db list\n",
+                            db.cert_entries + 1);
+              continue;
+            }
 
-      grub_dprintf ("appendedsig", "add a certificate CN='%s' to db\n", cert->subject);
+          grub_dprintf ("appendedsig", "add a certificate CN='%s' to db\n", cert->subject);
 
-      cert->next = db.certs;
-      db.certs = cert;
-      db.cert_entries++;
+          cert->next = db.certs;
+          db.certs = cert;
+          db.cert_entries++;
+        }
     }
 }
 
@@ -1294,9 +1328,18 @@ GRUB_MOD_INIT (appendedsig)
    */
   else if (grub_pks_use_keystore == true)
     {
-      err = create_db_list ();
-      if (err != GRUB_ERR_NONE)
-        grub_dprintf ("appendedsig", "warning: db list partially created\n");
+      if (grub_pks_keystore.use_static_keys == true)
+        {
+          grub_dprintf ("appendedsig", "db variable is not available at PKS and "
+                        "using a static keys as a default key in db list\n");
+          build_static_db_list ();
+        }
+      else
+        {
+          err = create_db_list ();
+          if (err != GRUB_ERR_NONE)
+            grub_dprintf ("appendedsig", "warning: db list partially created\n");
+        }
 
       err = create_dbx_list ();
       if (err != GRUB_ERR_NONE)
