@@ -1250,7 +1250,8 @@ build_static_db_list (void)
   grub_err_t err;
   struct grub_module_header *header;
   struct grub_file pseudo_file;
-  struct x509_certificate *cert;
+  grub_uint8_t *cert_data = NULL;
+  grub_size_t cert_data_size = 0;
 
   FOR_MODULES (header)
     {
@@ -1266,29 +1267,32 @@ build_static_db_list (void)
       grub_dprintf ("appendedsig", "found an X.509 certificate, size=%" PRIuGRUB_UINT64_T "\n",
                     pseudo_file.size);
 
-      err = read_cert_from_file (&pseudo_file, &cert);
+      err = file_read_whole (&pseudo_file, &cert_data, &cert_data_size);
       if (err == GRUB_ERR_OUT_OF_MEMORY)
-        return;
+        break;
       else if (err != GRUB_ERR_NONE)
+        continue;
+
+      if (grub_pks_keystore.use_static_keys == true)
         {
-          grub_dprintf ("appendedsig",
-                        "warning: cannot add a certificate %u to the db list\n",
-                        db.cert_entries + 1);
-          continue;
+          if (is_dbx_cert_hash (cert_data, cert_data_size) == true)
+            {
+              grub_free (cert_data);
+              continue;
+            }
         }
 
-      grub_dprintf ("appendedsig", "add a certificate CN='%s' to db\n", cert->subject);
-
-      cert->next = static_db.certs;
-      static_db.certs = cert;
-      static_db.cert_entries++;
+      err = add_certificate (cert_data, cert_data_size, &static_db, true);
+      grub_free (cert_data);
+      if (err == GRUB_ERR_OUT_OF_MEMORY)
+        break;
     }
 
   /*
    * If signature verification is enabled with the static key management,
    * use static db for appended signatures verification.
    */
-  if (grub_pks_use_keystore == false)
+  if (grub_pks_use_keystore == false || grub_pks_keystore.use_static_keys == true)
     {
       db.certs = static_db.certs;
       db.cert_entries = static_db.cert_entries;
@@ -1313,9 +1317,18 @@ build_pks_keystore (void)
       return;
     }
 
-  err = create_db_list ();
-  if (err != GRUB_ERR_NONE)
-    grub_printf ("warning: db list might not be fully populated\n");
+  if (grub_pks_keystore.use_static_keys == true)
+    {
+      grub_dprintf ("appendedsig", "db variable is not available at PKS and "
+                    "using a static keys as a default key in db list\n");
+      build_static_db_list ();
+    }
+  else
+    {
+      err = create_db_list ();
+      if (err != GRUB_ERR_NONE)
+        grub_dprintf ("appendedsig", "warning: db list might not be fully populated\n");
+    }
 
   err = create_dbx_list ();
   if (err != GRUB_ERR_NONE)
