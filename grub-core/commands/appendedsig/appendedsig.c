@@ -1154,9 +1154,17 @@ build_pks_keystore (void)
   if (err != GRUB_ERR_NONE)
     grub_printf ("warning: dbx list might not be fully populated\n");
 
-  err = create_db_list ();
-  if (err != GRUB_ERR_NONE)
-    grub_printf ("warning: db list might not be fully populated\n");
+  if (grub_pks_keystore.use_static_keys == true)
+    grub_dprintf ("appendedsig", "db variable is not available at PKS and "
+                  "using a static keys as a default key in db list\n");
+
+  build_static_db_list ();
+  if (grub_pks_keystore.use_static_keys == false)
+    {
+      err = create_db_list ();
+      if (err != GRUB_ERR_NONE)
+        grub_printf ("warning: db list might not be fully populated\n");
+    }
 
   grub_pks_free_keystore ();
   grub_dprintf ("appendedsig", "the db list now has %u keys\n"
