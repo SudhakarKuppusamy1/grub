@@ -97,6 +97,7 @@ struct grub_pks
   grub_uint32_t dbx_entries;/* Size of forbidden signature database. */
   bool pks_supported;       /* Flag to indicate the availability of PKS support. */
   bool use_keystore;        /* Flag to indicate the key management mode. */
+  bool use_static_keys;     /* Flag to indicate use of static keys. */
 } GRUB_PACKED;
 typedef struct grub_pks grub_pks_t;
 
