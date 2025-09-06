@@ -1125,9 +1125,19 @@ create_dbs_from_pks (void)
   if (err != GRUB_ERR_NONE)
     grub_printf ("warning: dbx list might not be fully populated\n");
 
-  err = load_pks2db ();
-  if (err != GRUB_ERR_NONE)
-    grub_printf ("warning: db list might not be fully populated\n");
+  /*
+   * The static keys from the GRUB ELF Note are used by the default keys
+   * in the db list if secure boot is enabled with dynamic key management
+   * when the db variable is not present or empty in the PKS keystore.
+   */
+  if (pks_keystore->use_static_keys == true)
+    load_elf2db ();
+  else
+    {
+      err = load_pks2db ();
+      if (err != GRUB_ERR_NONE)
+        grub_printf ("warning: db list might not be fully populated\n");
+    }
 
   grub_pks_tmp_free ();
   grub_dprintf ("appendedsig", "the db list now has %u keys\n"
