@@ -50,9 +50,19 @@
 
 static grub_uint32_t pks_max_object_size = 0;
 
-/* Platform KeyStore db and dbx. */
+/*
+ * Platform KeyStore db and dbx, use_static_keys falg to
+ * indicate use of static keys.
+ *
+ * use_static_keys:
+ * False: Does not enforce the use of  the static key as a default key from
+          the GRUB ELF Note. This is default.
+ * True: Enforce the use of the static key as a default key from the
+ *       GRUB ELF Note if db variable is not available in PKS when use_keystore
+ *       is set to true
+ */
 static grub_pks_t pks_keystore = { .db = NULL, .dbx = NULL, .db_entries = 0,
-                                   .dbx_entries = 0};
+                                   .dbx_entries = 0, .use_static_keys = false};
 /*
  * pks_use_keystore: Key Management Modes
  * False: Static key management (use built-in Keys). This is default.
@@ -332,6 +342,17 @@ grub_pks_keystore_init (void)
 
   /* Read db from PKS. */
   rc = read_sbvar_from_pks (0, PKS_SBVAR_DB, &pks_keystore.db, &pks_keystore.db_entries);
+  if (rc == GRUB_ERR_FILE_NOT_FOUND || rc == GRUB_ERR_BAD_NUMBER)
+    {
+      rc = GRUB_ERR_NONE;
+      /*
+       * This flag is set to true because secure boot is enabled with PKS,
+       * and the db variable is not present or empty in the PKS storage.
+       * It enforces the use of static keys from the GRUB ELF Note.
+       */
+      pks_keystore.use_static_keys = true;
+    }
+
   if (rc == GRUB_ERR_NONE)
     {
       /* Read dbx from PKS. */
