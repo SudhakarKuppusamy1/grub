@@ -380,6 +380,7 @@ grub_find_device (const char *dir, dev_t dev)
   DIR *dp;
   struct saved_cwd saved_cwd;
   struct dirent *ent;
+  struct stat st_dir;
 
   if (! dir)
     dir = "/dev";
@@ -387,6 +388,12 @@ grub_find_device (const char *dir, dev_t dev)
   dp = opendir (dir);
   if (! dp)
     return 0;
+
+  if (stat (dir, &st_dir) < 0)
+    {
+      closedir (dp);
+      return 0;
+    }
 
   if (save_cwd (&saved_cwd) < 0)
     {
@@ -436,6 +443,13 @@ grub_find_device (const char *dir, dev_t dev)
 	{
 	  /* Find it recursively.  */
 	  char *res;
+
+	  /* Skip mount point */
+	  if (st.st_dev != st_dir.st_dev)
+	    {
+	      grub_util_info ("skip mount point %s/%s", dir, ent->d_name);
+	      continue;
+	    }
 
 	  res = grub_find_device (ent->d_name, dev);
 
