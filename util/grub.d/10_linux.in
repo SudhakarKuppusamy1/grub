@@ -75,7 +75,13 @@ case x"$GRUB_FS" in
     xzfs)
 	rpool=`${grub_probe} --device ${GRUB_DEVICE} --target=fs_label 2>/dev/null || zdb -l ${GRUB_DEVICE} | awk -F \' '/ name/ { print $2 }'`
 	bootfs="`make_system_path_relative_to_its_root / | sed -e "s,@$,,"`"
-	LINUX_ROOT_DEVICE="ZFS=${rpool}${bootfs%/}"
+	# grub-probe fails on encrypted zfs pools, use zfs list as fallback
+	if [ -n "$rpool" ] && [ -n "$bootfs" ]; then
+	    LINUX_ROOT_DEVICE="ZFS=${rpool}${bootfs%/}"
+	else
+	    root_dataset=`zfs list -Ho mountpoint,name | grep '^/[[:space:]]' | tail -n1 | cut -f 2 2>/dev/null || true`
+	    LINUX_ROOT_DEVICE="ZFS=${root_dataset}"
+	fi
 	;;
 esac
 
