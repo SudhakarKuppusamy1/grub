@@ -2389,13 +2389,6 @@ module = {
 };
 
 module = {
-  name = efi_uga;
-  efi = video/efi_uga.c;
-  enable = i386_efi;
-  enable = x86_64_efi;
-};
-
-module = {
   name = jpeg;
   common = video/readers/jpeg.c;
 };
