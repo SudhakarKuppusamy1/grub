@@ -1,0 +1,29 @@
+.target-platform-matrix:
+  parallel:
+    matrix:
+      - TARGET: aarch64-linux-gnu
+        PLATFORM: [efi]
+      - TARGET: arm-linux-gnueabihf
+        PLATFORM: [coreboot, efi, uboot]
+      - TARGET: i386
+        PLATFORM: [coreboot, efi, ieee1275, multiboot, pc, qemu, xen, xen_pvh]
+      - TARGET: ia64-linux
+        PLATFORM: [efi]
+      - TARGET: loongarch64-linux
+        PLATFORM: [efi]
+      - TARGET: mips-linux-gnu
+        PLATFORM: [arc, qemu_mips]
+      - TARGET: mipsel-linux-gnu
+        PLATFORM: [arc, loongson, qemu_mips]
+      - TARGET: powerpc64-linux-gnu
+        PLATFORM: [ieee1275]
+      - TARGET: riscv32-linux
+        PLATFORM: [efi]
+      - TARGET: riscv64-linux-gnu
+        PLATFORM: [efi]
+      - TARGET: sparc64-linux-gnu
+        PLATFORM: [ieee1275]
+      - TARGET: x86_64
+        PLATFORM: [efi, emu, xen]
+      - TARGET: x86_64
+        PLATFORM: [efi]

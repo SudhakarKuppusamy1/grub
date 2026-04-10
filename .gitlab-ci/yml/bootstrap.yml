@@ -1,0 +1,9 @@
+bootstrap:
+  stage: bootstrap
+  script:
+    - ./bootstrap
+  artifacts:
+    when: always
+    untracked: true
+    paths:
+      - gnulib/

@@ -1,0 +1,5 @@
+signed-off-by:
+  stage: metadata
+  script:
+    - $SCRIPT_DIR/metadata-sob.sh
+

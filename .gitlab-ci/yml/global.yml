@@ -1,0 +1,5 @@
+default:
+  image: quay.io/grub/debian-trixie-grub
+
+variables:
+  SCRIPT_DIR: "./.gitlab-ci/script"
