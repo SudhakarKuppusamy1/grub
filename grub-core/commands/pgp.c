@@ -79,7 +79,7 @@ read_packet_header (grub_file_t sig, grub_uint8_t *out_type, grub_size_t *len)
 
   if (!(type & 0x80))
     return grub_error (GRUB_ERR_BAD_SIGNATURE, N_("bad signature"));
-  if (type & 0x40)
+  if (type & 0x40) /* Bit 6 set: new format packet length */
     {
       *out_type = (type & 0x3f);
       if (grub_file_read (sig, &l, sizeof (l)) != 1)
@@ -91,10 +91,11 @@ read_packet_header (grub_file_t sig, grub_uint8_t *out_type, grub_size_t *len)
 	}
       if (l < 224)
 	{
+          /* RFC4880 2-octet length: ((b1 - 192) << 8) + (b2 + 192) */
 	  *len = (l - 192) << GRUB_CHAR_BIT;
 	  if (grub_file_read (sig, &l, sizeof (l)) != 1)
 	    return grub_error (GRUB_ERR_BAD_SIGNATURE, N_("bad signature"));
-	  *len |= l;
+	  *len = (*len | l) + 192;
 	  return 0;
 	}
       if (l == 255)
@@ -106,6 +107,8 @@ read_packet_header (grub_file_t sig, grub_uint8_t *out_type, grub_size_t *len)
 	}
       return grub_error (GRUB_ERR_BAD_SIGNATURE, N_("bad signature"));
     }
+
+  /* Bit 6 unset: old format packet length */
   *out_type = ((type >> 2) & 0xf);
   switch (type & 0x3)
     {
