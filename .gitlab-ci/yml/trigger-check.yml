@@ -1,0 +1,21 @@
+trigger-x86_64-efi-check:
+  stage: check
+  variables:
+    TARGET: x86_64
+    PLATFORM: efi
+  trigger:
+    include: '.gitlab-ci/yml/check.yml'
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "schedule"
+    - if: $CI_PIPELINE_SOURCE == "web"
+
+trigger-aarch64-linux-gnu-efi-check:
+  stage: check
+  variables:
+    TARGET: aarch64-linux-gnu
+    PLATFORM: efi
+  trigger:
+    include: '.gitlab-ci/yml/check.yml'
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "schedule"
+    - if: $CI_PIPELINE_SOURCE == "web"

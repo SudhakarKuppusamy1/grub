@@ -1,0 +1,22 @@
+include:
+  - local: '.gitlab-ci/yml/global.yml'
+  - local: '.gitlab-ci/yml/matrix.yml'
+
+stages:
+  - bootstrap
+  - build
+  - check
+
+bootstrap:
+  stage: bootstrap
+  extends: .bootstrap
+
+build:
+  stage: build
+  extends: .build
+
+check:
+  stage: check
+  extends:
+    - .check
+    - .test-matrix

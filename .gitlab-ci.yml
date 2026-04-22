@@ -1,20 +1,15 @@
 include:
-# Include global includes
   - local: '.gitlab-ci/yml/global.yml'
   - local: '.gitlab-ci/yml/matrix.yml'
-# Include definitions of stage jobs
-  - local: '.gitlab-ci/yml/pages.yml'
   - local: '.gitlab-ci/yml/metadata.yml'
   - local: '.gitlab-ci/yml/bootstrap.yml'
   - local: '.gitlab-ci/yml/build.yml'
-
-# Only trigger on merge-request events
-workflow:
-  rules:
-    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+  - local: '.gitlab-ci/yml/trigger-check.yml'
+  - local: '.gitlab-ci/yml/pages.yml'
 
 stages:
-  - pages
   - metadata
   - bootstrap
   - build
+  - check
+  - pages

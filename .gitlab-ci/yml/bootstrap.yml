@@ -1,9 +1,5 @@
 bootstrap:
   stage: bootstrap
-  script:
-    - ./bootstrap
-  artifacts:
-    when: always
-    untracked: true
-    paths:
-      - gnulib/
+  extends: .bootstrap
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"

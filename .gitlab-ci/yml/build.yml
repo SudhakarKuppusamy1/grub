@@ -1,13 +1,7 @@
 build:
   stage: build
-  dependencies:
-    - bootstrap
-  script:
-    - $SCRIPT_DIR/build.sh
-  artifacts:
-    paths:
-      - gnulib/
-    untracked: true
-    expire_in: 1 week
-    when: always
-  extends: .target-platform-matrix
+  extends:
+    - .build
+    - .target-platform-matrix
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
