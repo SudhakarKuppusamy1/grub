@@ -11503,14 +11503,9 @@ Reporting too many things is much better than omitting something
 important.
 @end enumerate
 
-If you follow the guideline above, submit a report to the
-@uref{https://savannah.gnu.org/bugs/?group=grub, Bug Tracking System}.
-Alternatively, you can submit a report via electronic mail to
-@email{bug-grub@@gnu.org}, but we strongly recommend that you use the
-Bug Tracking System, because e-mail can be passed over easily.
-
+If you follow the guideline above,
+@uref{https://gitlab.freedesktop.org/gnu-grub/grub/-/work_items, create an issue}.
 Once we get your report, we will try to fix the bugs.
-
 
 @node Future
 @appendix Where GRUB will go
