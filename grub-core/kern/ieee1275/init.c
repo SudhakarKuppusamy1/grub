@@ -1024,41 +1024,36 @@ grub_ieee1275_get_secure_boot (void)
 {
   grub_ieee1275_phandle_t root;
   grub_uint32_t sb_mode = GRUB_SB_DISABLED;
-  grub_int32_t rc;
 
-  rc = grub_ieee1275_finddevice ("/", &root);
-  if (rc != 0)
-    {
-      grub_error (GRUB_ERR_UNKNOWN_DEVICE, "couldn't find / node");
-      return;
-    }
-
-  rc = grub_ieee1275_get_integer_property (root, "ibm,secure-boot", &sb_mode, sizeof (sb_mode), 0);
-  if (rc != 0)
-    {
-      grub_error (GRUB_ERR_UNKNOWN_DEVICE, "couldn't examine /ibm,secure-boot property");
-      return;
-    }
   /*
-   * Secure Boot Mode:
-   * 0 - disabled
-   *      No signature verification is performed. This is the default.
-   * 1 - audit
-   *      Signature verification is performed and if signature verification
-   *      fails, display the errors and allow the boot to continue.
-   * 2 - enforce
-   *      Lockdown the GRUB. Signature verification is performed and If
-   *      signature verification fails, display the errors and stop the boot.
-   *
-   * Now, only support disabled and enforce.
+   * Find the "ibm,secure-boot" device tree property and if it exists, read
+   * the secure boot mode.
    */
-  if (sb_mode == GRUB_SB_ENFORCE)
+  if (!grub_ieee1275_finddevice ("/", &root) &&
+      !grub_ieee1275_get_integer_property (root, "ibm,secure-boot", &sb_mode,
+	                                   sizeof (sb_mode), 0))
     {
-      grub_dprintf ("ieee1275", "Secure Boot Enabled\n");
-      grub_lockdown ();
+      /*
+       * Secure Boot Mode:
+       * 0 - disabled
+       *      No signature verification is performed. This is the default.
+       * 1 - audit
+       *      Signature verification is performed and if signature verification
+       *      fails, display the errors and allow the boot to continue.
+       * 2 - enforce
+       *      Lockdown the GRUB. Signature verification is performed and If
+       *      signature verification fails, display the errors and stop the boot.
+       *
+       * Now, only support disabled and enforce.
+       */
+      if (sb_mode == GRUB_SB_ENFORCE)
+        {
+          grub_dprintf ("ieee1275", "Secure Boot Enabled\n");
+          grub_lockdown ();
+        }
+      else
+        grub_dprintf ("ieee1275", "Secure Boot Disabled\n");
     }
-  else
-    grub_dprintf ("ieee1275", "Secure Boot Disabled\n");
 
   grub_pks_keystore_init ();
 }
