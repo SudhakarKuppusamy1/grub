@@ -17,6 +17,8 @@
         PLATFORM: [arc, loongson, qemu_mips]
       - TARGET: powerpc64-linux-gnu
         PLATFORM: [ieee1275]
+      - TARGET: powerpc64le-linux-gnu
+        PLATFORM: [ieee1275]
       - TARGET: riscv32-linux
         PLATFORM: [efi]
       - TARGET: riscv64-linux-gnu
