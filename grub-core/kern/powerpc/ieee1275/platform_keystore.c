@@ -160,13 +160,15 @@ read_sbversion_from_pks (grub_uint8_t **out)
   if (rc < 0)
     {
       grub_free (*out);
-      return grub_error (GRUB_ERR_READ_ERROR, "SB version read failed (%d)\n", rc);
+      grub_dprintf ("ieee1275", "SB version read failed (%d)\n", rc);
+      return GRUB_ERR_READ_ERROR;
     }
 
   if (outlen != 1 || (**out >= 2))
     {
       grub_free (*out);
-      return grub_error (GRUB_ERR_BAD_NUMBER, "found unexpected SB version: %u\n", **out);
+      grub_dprintf ("ieee1275", "found unexpected SB version: %u\n", **out);
+      return GRUB_ERR_BAD_NUMBER;
     }
 
   return GRUB_ERR_NONE;
@@ -193,14 +195,16 @@ read_sbvar_from_pks (const grub_uint32_t sbvarflags, const grub_uint32_t sbvarty
                                      esl_data, &esl_data_size);
   if (rc == IEEE1275_CELL_NOT_FOUND)
     {
-      err =  grub_error (GRUB_ERR_FILE_NOT_FOUND, "secure boot variable %s not found (%d)",
-                         (sbvartype == GRUB_PKS_SBVAR_DB) ? "db" : "dbx", rc);
+      err = GRUB_ERR_FILE_NOT_FOUND;
+      grub_dprintf ("ieee1275", "secure boot variable %s not found (%d)\n",
+                    (sbvartype == GRUB_PKS_SBVAR_DB) ? "db" : "dbx", rc);
       goto fail;
     }
   else if (rc < 0)
     {
-      err = grub_error (GRUB_ERR_READ_ERROR, "secure boot variable %s reading (%d)",
-                        (sbvartype == GRUB_PKS_SBVAR_DB) ? "db" : "dbx", rc);
+      err = GRUB_ERR_READ_ERROR;
+      grub_dprintf ("ieee1275", "secure boot variable %s reading (%d)\n",
+                    (sbvartype == GRUB_PKS_SBVAR_DB) ? "db" : "dbx", rc);
       goto fail;
     }
 
@@ -234,19 +238,13 @@ is_pks_present (void)
   bool ret = false;
 
   rc = grub_ieee1275_test (GRUB_PKS_MAX_OBJ_INTERFACE);
+  if (rc == 0)
+    rc = grub_ieee1275_pks_max_object_size (&pks_max_object_size);
+
   if (rc < 0)
     {
-      grub_error (GRUB_ERR_BAD_FIRMWARE, "firmware doesn't have PKS support\n");
+      grub_dprintf ("ieee1275", "Platform PKS is not available\n");
       return ret;
-    }
-  else
-    {
-      rc = grub_ieee1275_pks_max_object_size (&pks_max_object_size);
-      if (rc < 0)
-        {
-          grub_error (GRUB_ERR_BAD_NUMBER, "PKS support is there but it has zero objects\n");
-          return ret;
-        }
     }
 
   err = read_sbversion_from_pks (&data);
@@ -296,10 +294,7 @@ grub_pks_keystore_init (void)
   grub_dprintf ("ieee1275", "trying to load Platform KeyStore\n");
 
   if (is_pks_present () == false)
-    {
-      grub_dprintf ("ieee1275", "Platform PKS is not available\n");
-      return;
-    }
+    return;
 
   /*
    * When read db from PKS, there are three scenarios
