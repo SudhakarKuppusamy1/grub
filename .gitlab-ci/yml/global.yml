@@ -1,0 +1,36 @@
+default:
+  image: quay.io/grub/debian-trixie-grub
+
+variables:
+  SCRIPT_DIR: "./.gitlab-ci/script"
+
+.bootstrap:
+  script:
+    - ./bootstrap
+  artifacts:
+    when: always
+    untracked: true
+    paths:
+      - gnulib/
+
+.build:
+  dependencies:
+    - bootstrap
+  script:
+    - $SCRIPT_DIR/build.sh
+  artifacts:
+    paths:
+      - gnulib/
+    untracked: true
+    expire_in: 1 week
+    when: always
+
+.check:
+  script:
+    - make --quiet TESTS=$TEST check
+  dependencies:
+    - build
+  artifacts:
+    untracked: true
+    expire_in: 1 week
+    when: always
