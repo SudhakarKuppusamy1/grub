@@ -132,7 +132,7 @@ with open (os.path.join (cipher_dir_out, "crypto.lst"), "w", encoding="utf-8") a
         "gcry_sha512"  : ["hash-common.c"],
     }
     extra_files_list = [x for xs in extra_files.values() for x in xs] + [
-        "pubkey-util.c", "rsa-common.c", "dsa-common.c", "md.c"]
+        "pubkey-util.c", "rsa-common.c", "dsa-common.c", "md.c", "dilithium-common.c", "dilithium-dep.c", "dilithium.c"]
 
     for cipher_file in cipher_files:
         infile = os.path.join (cipher_dir_in, cipher_file)

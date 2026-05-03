@@ -487,6 +487,7 @@ grub_md_unregister (gcry_md_spec_t *cipher);
 extern struct gcry_pk_spec *grub_crypto_pk_dsa;
 extern struct gcry_pk_spec *grub_crypto_pk_ecdsa;
 extern struct gcry_pk_spec *grub_crypto_pk_ecdh;
+extern struct gcry_pk_spec *grub_crypto_pk_mldsa;
 extern struct gcry_pk_spec *grub_crypto_pk_rsa;
 
 void
