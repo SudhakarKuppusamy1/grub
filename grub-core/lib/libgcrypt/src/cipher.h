@@ -44,7 +44,8 @@
 #define PUBKEY_FLAG_DJB_TWEAK      (1 << 15)
 #define PUBKEY_FLAG_SM2            (1 << 16)
 #define PUBKEY_FLAG_PREHASH        (1 << 17)
-
+#define PUBKEY_FLAG_BYTE_STRING    (1 << 18)
+#define PUBKEY_FLAG_NO_PREFIX      (1 << 19)
 
 enum pk_operation
   {
@@ -225,6 +226,7 @@ extern gcry_pk_spec_t _gcry_pubkey_spec_rsa;
 extern gcry_pk_spec_t _gcry_pubkey_spec_elg;
 extern gcry_pk_spec_t _gcry_pubkey_spec_dsa;
 extern gcry_pk_spec_t _gcry_pubkey_spec_ecc;
+extern gcry_pk_spec_t _gcry_pubkey_spec_mldsa;
 extern gcry_pk_spec_t _gcry_pubkey_spec_kem;
 
 

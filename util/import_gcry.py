@@ -132,7 +132,7 @@ with open (os.path.join (cipher_dir_out, "crypto.lst"), "w", encoding="utf-8") a
         "gcry_sha512"  : ["hash-common.c"],
     }
     extra_files_list = [x for xs in extra_files.values() for x in xs] + [
-        "pubkey-util.c", "rsa-common.c", "dsa-common.c", "md.c"]
+        "pubkey-util.c", "rsa-common.c", "dsa-common.c", "md.c", "dilithium-common.c", "dilithium-dep.c", "dilithium.c"]
 
     for cipher_file in cipher_files:
         infile = os.path.join (cipher_dir_in, cipher_file)
@@ -274,7 +274,7 @@ with open (os.path.join (cipher_dir_out, "crypto.lst"), "w", encoding="utf-8") a
                         hold = False
                         # We're optimising for size and exclude anything needing good
                         # randomness.
-                        if re.match ("(_gcry_hash_selftest_check_one|bulk_selftest_setkey|run_selftests|do_tripledes_set_extra_info|selftest|sm4_selftest|_gcry_[a-z0-9_]*_hash_buffers|_gcry_sha1_hash_buffer|tripledes_set2keys|_gcry_rmd160_mixblock|serpent_test|dsa_generate_ext|test_keys|gen_k|sign|gen_x931_parm_xp|generate_x931|generate_key|dsa_generate|dsa_sign|ecc_sign|generate|generate_fips186|_gcry_register_pk_dsa_progress|_gcry_register_pk_ecc_progress|progress|scanval|ec2os|ecc_generate_ext|ecc_generate|ecc_get_param|_gcry_register_pk_dsa_progress|gen_x931_parm_xp|gen_x931_parm_xi|rsa_decrypt|rsa_sign|rsa_generate_ext|rsa_generate|secret|check_exponent|rsa_blind|rsa_unblind|extract_a_from_sexp|curve_free|curve_copy|point_set|_gcry_dsa_gen_rfc6979_k|bits2octets|int2octets|_gcry_md_debug|_gcry_md_selftest|_gcry_md_is_enabled|_gcry_md_is_secure|_gcry_md_init|_gcry_md_info|md_get_algo|md_extract|_gcry_md_get |_gcry_md_get_algo |_gcry_md_extract|_gcry_md_setkey|md_setkey|prepare_macpads|_gcry_md_algo_name|search_oid|spec_from_oid|spec_from_name|spec_from_algo|map_algo|cshake_hash_buffers|selftest_seq)", line) is not None:
+                        if re.match ("(_gcry_hash_selftest_check_one|bulk_selftest_setkey|run_selftests|do_tripledes_set_extra_info|selftest|sm4_selftest|_gcry_[a-z0-9_]*_hash_buffers|_gcry_sha1_hash_buffer|tripledes_set2keys|_gcry_rmd160_mixblock|serpent_test|dsa_generate_ext|test_keys|gen_k|sign|gen_x931_parm_xp|generate_x931|generate_key|dsa_generate|dsa_sign|ecc_sign|generate|generate_fips186|_gcry_register_pk_dsa_progress|_gcry_register_pk_ecc_progress|progress|scanval|ec2os|ecc_generate_ext|ecc_generate|ecc_get_param|_gcry_register_pk_dsa_progress|gen_x931_parm_xp|gen_x931_parm_xi|rsa_decrypt|rsa_sign|rsa_generate_ext|rsa_generate|secret|check_exponent|rsa_blind|rsa_unblind|extract_a_from_sexp|curve_free|curve_copy|point_set|_gcry_dsa_gen_rfc6979_k|bits2octets|int2octets|_gcry_md_debug|_gcry_md_selftest|_gcry_md_is_enabled|_gcry_md_is_secure|_gcry_md_init|_gcry_md_info|md_get_algo|_gcry_md_get|_gcry_md_get_algo|_gcry_md_algo_name|search_oid|spec_from_oid|spec_from_name|spec_from_algo|map_algo|cshake_hash_buffers|selftest_seq|mldsa_generate|randombytes|mldsa_sign)", line) is not None and (not re.match ("_gcry_md_hash_buffers",line) and not re.match ("_gcry_md_get_algo_dlen",line)):
                             skip = 1
                             if not re.match ("selftest", line) is None and cipher_file == "idea.c":
                                 skip = 3
@@ -290,6 +290,12 @@ with open (os.path.join (cipher_dir_out, "crypto.lst"), "w", encoding="utf-8") a
                                 fw.write ("#define dsa_generate 0")
                             if not re.match ("ecc_generate", line) is None:
                                 fw.write ("#define ecc_generate 0")
+                            if not re.match ("mldsa_generate ", line) is None:
+                                fw.write ("#define mldsa_generate 0")
+                            if not re.match ("mldsa_sign", line) is None:
+                                fw.write ("#define mldsa_sign 0")
+                            if not re.match ("randombytes", line) is None:
+                                fw.write ("#define randombytes 0")
                             if not re.match ("rsa_generate ", line) is None:
                                 fw.write ("#define rsa_generate 0")
                             if not re.match ("rsa_sign", line) is None:
