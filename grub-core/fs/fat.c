@@ -849,6 +849,8 @@ grub_fat_iterate_dir_next (grub_fshelp_node_t node,
 	}
 
       /* Convert the 8.3 file name.  */
+      /* Ensure checks for dot later do not read uninitialized memory. */
+      grub_memset(ctxt->filename, 0, sizeof(ctxt->dir.name));
       filep = ctxt->filename;
       if (ctxt->dir.attr & GRUB_FAT_ATTR_VOLUME_ID)
 	{
