@@ -623,6 +623,11 @@ grub_font_load (const char *filename)
 			    sizeof (FONT_FORMAT_SECTION_NAMES_CHAR_INDEX) -
 			    1) == 0)
 	{
+	  if (font->char_index != NULL)
+	    {
+	      grub_error (GRUB_ERR_BAD_FONT, "invalid font file: too many CHIX sections");
+	      goto fail;
+	    }
 	  if (load_font_index (file, section.length, font) != 0)
 	    goto fail;
 	}
