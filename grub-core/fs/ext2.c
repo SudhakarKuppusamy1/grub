@@ -825,10 +825,9 @@ grub_ext2_iterate_dir (grub_fshelp_node_t dir,
     {
       struct ext2_dirent dirent;
 
-      grub_ext2_read_file (diro, 0, 0, fpos, sizeof (struct ext2_dirent),
-			   (char *) &dirent);
-      if (grub_errno)
-	return 0;
+      if (grub_ext2_read_file (diro, 0, 0, fpos, sizeof (struct ext2_dirent),
+			       (char *) &dirent) != (grub_ssize_t) sizeof (struct ext2_dirent))
+        return 0;
 
       if (dirent.direntlen == 0)
         return 0;
@@ -839,9 +838,8 @@ grub_ext2_iterate_dir (grub_fshelp_node_t dir,
 	  struct grub_fshelp_node *fdiro;
 	  enum grub_fshelp_filetype type = GRUB_FSHELP_UNKNOWN;
 
-	  grub_ext2_read_file (diro, 0, 0, fpos + sizeof (struct ext2_dirent),
-			       dirent.namelen, filename);
-	  if (grub_errno)
+	  if (grub_ext2_read_file (diro, 0, 0, fpos + sizeof (struct ext2_dirent),
+				   dirent.namelen, filename) != (grub_ssize_t) dirent.namelen)
 	    return 0;
 
 	  fdiro = grub_malloc (sizeof (struct grub_fshelp_node));
