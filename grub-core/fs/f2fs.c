@@ -1187,7 +1187,7 @@ grub_f2fs_dir (grub_device_t device, const char *path,
   grub_f2fs_iterate_dir (fdiro, grub_f2fs_dir_iter, &ctx);
 
  fail:
-  if (fdiro != &ctx.data->diropen)
+  if (ctx.data != NULL && fdiro != &ctx.data->diropen)
     grub_free (fdiro);
   grub_free (ctx.data);
   grub_dl_unref (my_mod);
@@ -1236,7 +1236,7 @@ grub_f2fs_open (struct grub_file *file, const char *name)
   return 0;
 
  fail:
-  if (fdiro != &data->diropen)
+  if (data != NULL && fdiro != &data->diropen)
     grub_free (fdiro);
   grub_free (data);
 
