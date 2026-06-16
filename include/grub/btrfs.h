@@ -29,6 +29,7 @@ enum
     GRUB_BTRFS_ITEM_TYPE_ROOT_ITEM = 0x84,
     GRUB_BTRFS_ITEM_TYPE_ROOT_BACKREF = 0x90,
     GRUB_BTRFS_ITEM_TYPE_DEVICE = 0xd8,
+    GRUB_BTRFS_ITEM_TYPE_ROOT_REF = 0x9c,
     GRUB_BTRFS_ITEM_TYPE_CHUNK = 0xe4
   };
 
@@ -38,11 +39,14 @@ enum
     GRUB_BTRFS_TREE_ROOT_OBJECTID = 0x100,
   };
 
+#define GRUB_BTRFS_ROOT_SUBVOL_RDONLY	(1ULL << 0)
+
 struct grub_btrfs_root_item
 {
   grub_uint8_t dummy[0xb0];
   grub_uint64_t tree;
-  grub_uint64_t inode;
+  grub_uint8_t dummy2[0x18];
+  grub_uint64_t flags;
 } GRUB_PACKED;
 
 struct grub_btrfs_key
