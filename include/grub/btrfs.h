@@ -43,7 +43,7 @@ struct grub_btrfs_root_item
   grub_uint8_t dummy[0xb0];
   grub_uint64_t tree;
   grub_uint64_t inode;
-};
+} GRUB_PACKED;
 
 struct grub_btrfs_key
 {
@@ -59,13 +59,13 @@ struct grub_btrfs_root_backref
   grub_uint64_t seqnr;
   grub_uint16_t n;
   char name[0];
-};
+} GRUB_PACKED;
 
 struct grub_btrfs_inode_ref
 {
   grub_uint64_t idxid;
   grub_uint16_t n;
   char name[0];
-};
+} GRUB_PACKED;
 
 #endif
