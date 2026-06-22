@@ -4604,7 +4604,8 @@ functionality of GRUB.
 
 @node btrfs_module
 @section btrfs
-This module provides support for the B-Tree File System (BTRFS).
+This module provides support for the B-Tree File System (BTRFS), including the
+@command{btrfs-info}, @command{btrfs-list-subvols}, and @command{btrfs-get-default-subvol} commands.
 
 @node bufio_module
 @section bufio
@@ -6812,6 +6813,9 @@ you forget a command, you can run the command @command{help}
 * blscfg::                      Load Boot Loader Specification menu entries
 * boot::                        Start up your operating system
 * bootnext::                    Set EFI BootNext variable
+* btrfs-get-default-subvol::    Print default Btrfs subvolume
+* btrfs-info::                  Print Btrfs filesystem basic information
+* btrfs-list-subvols::          List Btrfs subvolumes
 * cat::                         Show the contents of a file
 * clear::                       Clear the screen
 * cmosclean::                   Clear bit in CMOS
@@ -7243,6 +7247,53 @@ menu) is printed when it can be decoded, for example:
 grub> @kbd{bootnext 0002}
 BootNext set to Boot0002: UEFI QEMU DVD-ROM QM00003
 @end example
+@end deffn
+
+
+@node btrfs-get-default-subvol
+@subsection btrfs-get-default-subvol
+
+@deffn Command btrfs-get-default-subvol [--output=@var{var}] [--path-only] [--id-only] @var{device}
+Print the default subvolume of @var{device}.
+
+By default, the command prints the default subvolume path.  Use
+@option{--id-only} to print only the subvolume ID.  If both
+@option{--path-only} and @option{--id-only} are given, both ID and path are
+printed.
+
+Use @option{--output} to store the result in GRUB environment variable
+@var{var} instead of printing it.
+@end deffn
+
+
+@node btrfs-info
+@subsection btrfs-info
+
+@deffn Command btrfs-info @var{device}
+Print basic Btrfs filesystem information for @var{device}.
+
+The command reports:
+@itemize @bullet
+@item filesystem label (or @samp{none} if unset),
+@item filesystem UUID,
+@item total device count in the filesystem,
+@item filesystem bytes used.
+@end itemize
+@end deffn
+
+
+@node btrfs-list-subvols
+@subsection btrfs-list-subvols
+
+@deffn Command btrfs-list-subvols [--output=@var{var}] [--path-only] [--id-only] [--read-only] @var{device}
+Enumerate subvolumes on @var{device}.
+
+By default, each entry includes both subvolume ID and path.
+@option{--path-only} prints only paths, and @option{--id-only} prints only IDs.
+@option{--read-only} filters output to read-only subvolumes only.
+
+Use @option{--output} to store all lines in GRUB environment variable @var{var}
+instead of printing them.
 @end deffn
 
 
