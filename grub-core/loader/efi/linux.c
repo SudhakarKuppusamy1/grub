@@ -55,6 +55,9 @@ static bool initrd_use_loadfile2 = false;
 static grub_guid_t load_file2_guid = GRUB_EFI_LOAD_FILE2_PROTOCOL_GUID;
 static grub_guid_t device_path_guid = GRUB_EFI_DEVICE_PATH_GUID;
 
+static grub_guid_t loaded_image_device_path_guid = 
+    GRUB_EFI_LOADED_IMAGE_DEVICE_PATH_PROTOCOL_GUID;
+
 /*
  * Clang will produce a warning for missing initializer for the
  * zero-length array "vendor_defined_data" inside this structure.
@@ -197,6 +200,10 @@ grub_arch_efi_linux_boot_image (grub_addr_t addr, grub_size_t size, char *args)
   grub_efi_handle_t image_handle;
   grub_efi_status_t status;
   grub_efi_loaded_image_t *loaded_image;
+  grub_efi_boot_services_t *b = grub_efi_system_table->boot_services;
+  grub_efi_device_path_t *saved_file_path = NULL;
+  grub_efi_device_path_t *saved_device_path = NULL;
+  bool override_dp = false;
   grub_size_t len;
   grub_size_t args_len;
 
@@ -228,23 +235,54 @@ grub_arch_efi_linux_boot_image (grub_addr_t addr, grub_size_t size, char *args)
 	}
     }
 
-  grub_free (mempath);
-
   grub_dprintf ("linux", "linux command line: '%s'\n", args);
 
   /* Convert command line to UTF-16. */
   loaded_image = grub_efi_get_loaded_image (image_handle);
   if (loaded_image == NULL)
     {
+      grub_free (mempath);
       grub_error (GRUB_ERR_BAD_FIRMWARE, "missing loaded_image proto");
       goto unload;
     }
+
+  /*
+   * The verifier may have loaded this image with no device path (see
+   * grub-core/kern/efi/sb.c): both loaded_image->file_path and the
+   * LOADED_IMAGE_DEVICE_PATH protocol are left NULL. Point them at the memory
+   * mapped path we built, matching what grub_efi_load_image() sets, and
+   * remember the originals so they can be restored if the image returns and has
+   * to be unloaded.
+   */
+  if (loaded_image->file_path == NULL)
+    {
+      loaded_image->file_path = (grub_efi_device_path_t *) mempath;
+
+      status = b->handle_protocol (image_handle, &loaded_image_device_path_guid,
+				   (void **) &saved_device_path);
+      if (status != GRUB_EFI_SUCCESS)
+        {
+          grub_error (GRUB_ERR_BAD_FIRMWARE,
+                "missing protocol for loaded image device path");
+          loaded_image->file_path = NULL;
+          grub_free (mempath);
+          goto unload;
+        }
+      b->reinstall_protocol_interface (image_handle,
+				       &loaded_image_device_path_guid,
+				       saved_device_path,
+				       (grub_efi_device_path_t *) mempath);
+      override_dp = true;
+    }
+  else
+    grub_free (mempath);  /* the image's loader made its own copy */
+
   args_len = grub_strlen (args);
   len = (args_len + 1) * sizeof (grub_efi_char16_t);
   loaded_image->load_options =
     grub_efi_allocate_any_pages (GRUB_EFI_BYTES_TO_PAGES (len));
   if (!loaded_image->load_options)
-    return grub_errno;
+    goto unload;
 
   len = grub_utf8_to_utf16 (loaded_image->load_options, len,
 			    (grub_uint8_t *) args, args_len, NULL);
@@ -261,6 +299,16 @@ grub_arch_efi_linux_boot_image (grub_addr_t addr, grub_size_t size, char *args)
 		       GRUB_EFI_BYTES_TO_PAGES (len));
   loaded_image->load_options = NULL;
 unload:
+  /* Restore the device path so the image's loader frees its own copy. */
+  if (override_dp)
+    {
+      loaded_image->file_path = saved_file_path;
+      b->reinstall_protocol_interface (image_handle,
+				       &loaded_image_device_path_guid,
+				       (grub_efi_device_path_t *) mempath,
+				       saved_device_path);
+      grub_free (mempath);
+    }
   grub_efi_unload_image (image_handle);
 
   return grub_errno;
