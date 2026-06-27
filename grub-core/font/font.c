@@ -862,6 +862,14 @@ free_font (grub_font_t font)
 	grub_file_close (font->file);
       grub_free (font->name);
       grub_free (font->family);
+      if (font->char_index)
+       {
+         grub_uint32_t i;
+
+         /* Free any glyphs that were demand-loaded and cached.  */
+         for (i = 0; i < font->num_chars; i++)
+           grub_free (font->char_index[i].glyph);
+       }
       grub_free (font->char_index);
       grub_free (font->bmp_idx);
       grub_free (font);
