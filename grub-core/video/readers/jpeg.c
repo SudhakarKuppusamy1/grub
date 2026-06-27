@@ -245,7 +245,7 @@ grub_jpeg_decode_huff_table (struct grub_jpeg_data *data)
 
       if (grub_file_read (data->file, &count, sizeof (count)) !=
 	  sizeof (count))
-	return grub_errno;
+	return grub_error (GRUB_ERR_BAD_FILE_TYPE, "jpeg: unexpected end of data");
 
       n = 0;
       for (i = 0; i < ARRAY_SIZE (count); i++)
@@ -260,7 +260,7 @@ grub_jpeg_decode_huff_table (struct grub_jpeg_data *data)
 	return grub_errno;
 
       if (grub_file_read (data->file, data->huff_value[id], n) != n)
-	return grub_errno;
+	return grub_error (GRUB_ERR_BAD_FILE_TYPE, "jpeg: unexpected end of data");
 
       base = 0;
       ofs = 0;
@@ -316,7 +316,7 @@ grub_jpeg_decode_quan_table (struct grub_jpeg_data *data)
       if (grub_file_read (data->file, &data->quan_table[id],
 			  sizeof (data->quan_table[id]))
 	  != sizeof (data->quan_table[id]))
-	return grub_errno;
+	return grub_error (GRUB_ERR_BAD_FILE_TYPE, "jpeg: unexpected end of data");
 
     }
 

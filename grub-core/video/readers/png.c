@@ -1018,7 +1018,7 @@ grub_png_decode_png (struct grub_png_data *data)
   grub_uint8_t magic[8];
 
   if (grub_file_read (data->file, &magic[0], 8) != 8)
-    return grub_errno;
+    return grub_error (GRUB_ERR_BAD_FILE_TYPE, "png: unexpected end of data");
 
   if (grub_memcmp (magic, png_magic, sizeof (png_magic)))
     return grub_error (GRUB_ERR_BAD_FILE_TYPE, "png: not a png file");
