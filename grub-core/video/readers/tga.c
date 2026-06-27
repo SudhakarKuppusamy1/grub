@@ -345,7 +345,10 @@ grub_video_reader_tga (struct grub_video_bitmap **bitmap,
 
   /* Check image height and width are within restrictions. */
   if ((data.image_height > IMAGE_HW_MAX_PX) || (data.image_width > IMAGE_HW_MAX_PX))
-    return grub_error (GRUB_ERR_BAD_FILE_TYPE, "tga: invalid image size");
+    {
+      grub_file_close (data.file);
+      return grub_error (GRUB_ERR_BAD_FILE_TYPE, "tga: invalid image size");
+    }
 
   /* Check that bitmap encoding is supported.  */
   switch (data.hdr.image_type)
