@@ -197,7 +197,7 @@ tpm_snapshot_pcrs (grub_uint32_t pcr_bitmask, const TPM_ALG_ID_t alg_id, void **
  * Preserve current PCR values and record them to an EFI variable
  */
 static grub_err_t
-tpm_write_pcrs_to_efi (void *data, grub_size_t size, const char *var_name)
+tpm_write_pcrs_snapshot (void *data, grub_size_t size, const char *var_name)
 {
   grub_guid_t guid = GRUB_PCR_SNAPSHOT_GUID;
   grub_err_t rc;
@@ -267,7 +267,7 @@ tpm_record_pcrs (grub_extcmd_context_t ctxt, int argc, char **args)
       goto out;
     }
 
-  err = tpm_write_pcrs_to_efi (buffer, size, efivar);
+  err = tpm_write_pcrs_snapshot (buffer, size, efivar);
   if (err != GRUB_ERR_NONE)
     goto out;
 

@@ -2742,7 +2742,7 @@ module = {
 
 module = {
   name = tpm_record_pcrs;
-  efi = commands/efi/tpm_record_pcrs.c;
+  efi = commands/tpm_record_pcrs.c;
   cppflags = '-I$(srcdir)/lib/tss2';
   enable = efi;
   depends = tss2;
