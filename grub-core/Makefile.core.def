@@ -2742,9 +2742,10 @@ module = {
 
 module = {
   name = tpm_record_pcrs;
-  efi = commands/tpm_record_pcrs.c;
+  common = commands/tpm_record_pcrs.c;
   cppflags = '-I$(srcdir)/lib/tss2';
   enable = efi;
+  enable = powerpc_ieee1275;
   depends = tss2;
 };
 

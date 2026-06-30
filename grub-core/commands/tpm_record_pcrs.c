@@ -17,7 +17,6 @@
  */
 
 #include <grub/dl.h>
-#include <grub/efi/efi.h>
 #include <grub/err.h>
 #include <grub/extcmd.h>
 #include <grub/i18n.h>
@@ -28,29 +27,75 @@
 #include <tcg2.h>
 #include <tss2_util.h>
 
+#if defined (GRUB_MACHINE_EFI)
+#include <grub/efi/efi.h>
+#elif defined(__powerpc__) && defined (GRUB_MACHINE_IEEE1275)
+#include <grub/ieee1275/ieee1275.h>
+#else
+#error "Unsupported architecture"
+#endif
+
+
 GRUB_MOD_LICENSE ("GPLv3+");
 
-#define TPM_PCR_BITMASK_ALL ((1u << GRUB_TPM_MAX_PCRS) - 1)
+#if defined (GRUB_MACHINE_EFI)
+
+#define DEFAULT_NAME "GrubPcrSnapshot"
 
 /* GUID for GRUB PCR snapshot EFI variables. */
 #define GRUB_PCR_SNAPSHOT_GUID \
   { 0x7ce323f2, 0xb841, 0x4d30, { 0xa0, 0xe9, 0x54, 0x74, 0xa7, 0x6c, 0x9a, 0x3f } }
 
+/*
+ * Preserve current PCR values and record them to an EFI variable
+ */
+static grub_err_t
+tpm_write_pcrs_snapshot (void *data, grub_size_t size, const char *name)
+{
+  grub_guid_t guid = GRUB_PCR_SNAPSHOT_GUID;
+  grub_err_t rc;
+
+  rc = grub_efi_set_variable_with_attributes (name, &guid, data, size,
+					      GRUB_EFI_VARIABLE_BOOTSERVICE_ACCESS | GRUB_EFI_VARIABLE_RUNTIME_ACCESS);
+
+  return rc;
+}
+
+#elif defined(__powerpc__) && defined (GRUB_MACHINE_IEEE1275)
+
+#define DEFAULT_NAME "grub,pcr-snapshot"
+
+static grub_err_t
+tpm_write_pcrs_snapshot (void *data, grub_size_t size, const char *name)
+{
+  grub_ssize_t actual = 0;
+  int ret;
+
+  ret = grub_ieee1275_set_property (grub_ieee1275_chosen, name, data, size, &actual);
+  if (ret < 0 || actual != (grub_ssize_t) size)
+    return grub_error (GRUB_ERR_BAD_DEVICE, N_("Failed to set device tree property '%s'"), name);
+
+  return GRUB_ERR_NONE;
+}
+
+#endif
+
+#define TPM_PCR_BITMASK_ALL ((1u << GRUB_TPM_MAX_PCRS) - 1)
+
 typedef enum {
-  OPTION_EFIVAR = 0,
+  OPTION_NAME = 0,
   OPTION_BANK,
 } tpm_record_pcrs_options_t;
 
 static const struct grub_arg_option tpm_record_pcrs_options[] =
   {
     {
-      .longarg  = "efivar",
-      .shortarg = 'E',
+      .longarg  = "name",
+      .shortarg = 'N',
       .flags    = 0,
       .arg      = NULL,
       .type     = ARG_TYPE_STRING,
-      .doc      =
-        N_("The EFI variable to publish the PCRs to (default GrubPcrSnapshot)"),
+      .doc      = N_("The name of the EFI variable or device tree property to publish the PCRs to (default " DEFAULT_NAME ")"),
     },
 
     {
@@ -193,27 +238,12 @@ tpm_snapshot_pcrs (grub_uint32_t pcr_bitmask, const TPM_ALG_ID_t alg_id, void **
   return GRUB_ERR_NONE;
 }
 
-/*
- * Preserve current PCR values and record them to an EFI variable
- */
-static grub_err_t
-tpm_write_pcrs_snapshot (void *data, grub_size_t size, const char *var_name)
-{
-  grub_guid_t guid = GRUB_PCR_SNAPSHOT_GUID;
-  grub_err_t rc;
-
-  rc = grub_efi_set_variable_with_attributes (var_name, &guid, data, size,
-					      GRUB_EFI_VARIABLE_BOOTSERVICE_ACCESS | GRUB_EFI_VARIABLE_RUNTIME_ACCESS);
-
-  return rc;
-}
-
 static grub_err_t
 tpm_record_pcrs (grub_extcmd_context_t ctxt, int argc, char **args)
 {
   struct grub_arg_list *state = ctxt->state;
   grub_uint32_t pcr_bitmask = 0;
-  const char *efivar;
+  const char *name;
   TPM_ALG_ID_t alg_id = TPM_ALG_SHA256;
   void *buffer = NULL;
   grub_size_t tcg2_size;
@@ -229,13 +259,13 @@ tpm_record_pcrs (grub_extcmd_context_t ctxt, int argc, char **args)
       return GRUB_ERR_NONE;
     }
 
-  efivar = "GrubPcrSnapshot";
-  if (state[OPTION_EFIVAR].set)
+  name = DEFAULT_NAME;
+  if (state[OPTION_NAME].set)
     {
-      if (grub_strlen (state[OPTION_EFIVAR].arg) <= 30)
-	efivar = state[OPTION_EFIVAR].arg;
+      if (grub_strlen (state[OPTION_NAME].arg) <= 30)
+	name = state[OPTION_NAME].arg;
       else
-	grub_printf (N_("EFI variable name exceeds 30 characters. Falling back to GrubPcrSnapshot.\n"));
+	grub_printf (_("Expected a name <= 30 characters for readability. Falling back to \"%s\"\n"), DEFAULT_NAME);
     }
 
   if (state[OPTION_BANK].set)
@@ -267,7 +297,7 @@ tpm_record_pcrs (grub_extcmd_context_t ctxt, int argc, char **args)
       goto out;
     }
 
-  err = tpm_write_pcrs_snapshot (buffer, size, efivar);
+  err = tpm_write_pcrs_snapshot (buffer, size, name);
   if (err != GRUB_ERR_NONE)
     goto out;
 
@@ -283,7 +313,7 @@ GRUB_MOD_INIT (tpm_record_pcrs)
 {
   cmd = grub_register_extcmd ("tpm_record_pcrs", tpm_record_pcrs, 0,
 			      N_("LIST_OF_PCRS"),
-			      N_("Snapshot one or more PCR values and record them in an EFI variable."),
+			      N_("Snapshot one or more PCR values and record them in an EFI variable or device tree property."),
 			      tpm_record_pcrs_options);
 }
 

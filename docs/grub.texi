@@ -6915,7 +6915,7 @@ you forget a command, you can run the command @command{help}
 * tpm2_key_protector_init::     Initialize the TPM2 key protector
 * tpm2_key_protector_clear::    Clear the TPM2 key protector
 * tpm2_dump_pcr::               Dump TPM2 PCRs
-* tpm_record_pcrs::             Snapshot TPM PCRs to an EFI variable
+* tpm_record_pcrs::             Snapshot TPM PCRs
 * true::                        Do nothing, successfully
 * trust::                       Add public key to list of trusted keys
 * uki::                         Load Unified Kernel Image menu entries
@@ -9136,10 +9136,10 @@ also extends PCR 8, so PCR 8 will not be a stable value in GRUB shell.
 @node tpm_record_pcrs
 @subsection tpm_record_pcrs
 
-@deffn Command tpm_record_pcrs [@option{--efivar}=@var{name} | @option{-E} @var{name}] [@option{--bank}=@var{bank} | @option{-b} @var{bank}] [@var{pcrlist}@dots{}]
+@deffn Command tpm_record_pcrs [@option{--name}=@var{name} | @option{-N} @var{name}] [@option{--bank}=@var{bank} | @option{-b} @var{bank}] [@var{pcrlist}@dots{}]
 Read the current values of the specified TPM PCR registers and write them
-to an EFI variable so that the snapshot is accessible to the operating system
-after ExitBootServices.
+to an EFI variable (on UEFI systems) or a device tree property (on PowerPC IEEE1275 systems)
+so that the snapshot is accessible to the operating system after boot.
 
 Note: Only TPM 2.0 is supported; TPM 1.x devices are not supported due to the
 lack of TPM 1.x command support in GRUB.
@@ -9153,14 +9153,20 @@ The @option{--bank} option selects the hash algorithm used to read the PCRs.
 Supported values are @samp{sha1}, @samp{sha256}, @samp{sha384}, and
 @samp{sha512}. The default is @samp{sha256}.
 
-The @option{--efivar} option sets the name of the EFI variable that receives
-the snapshot (default: @samp{GrubPcrSnapshot}). The name must not exceed 30
-characters; longer names are rejected and the default name is used instead.
-The variable is stored under a GRUB-specific GUID and is created with
-boot-service and runtime access but without the non-volatile attribute, so it
-exists only for the duration of the current boot.
+The @option{--name} option sets the target storage name that receives the snapshot.
+The name must not exceed 30 characters; longer names are rejected and the default
+name is used instead.
 
-The output stored in the variable is plain text, one line per PCR:
+On UEFI systems, this specifies the name of the EFI variable (default: @samp{GrubPcrSnapshot}).
+The variable is stored under a GRUB-specific GUID and is created with boot-service and
+runtime access but without the non-volatile attribute, so it exists only for the duration of
+the current boot.
+
+On PowerPC IEEE1275 systems, this specifies the name of the device tree property (default:
+@samp{grub,pcr-snapshot}). The property is written under the @file{/chosen} node of the
+OpenFirmware device tree.
+
+The output stored in the variable or property is plain text, one line per PCR:
 
 @example
 NN algo hexdigest
@@ -9175,7 +9181,7 @@ tpm_record_pcrs 0,2,4,7
 @end example
 
 @noindent
-would store the following in the @samp{GrubPcrSnapshot} variable:
+would store the following in the default variable or property:
 
 @example
 00 sha256 a3b4c5d6e7f8091a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c2d3e4f5a
