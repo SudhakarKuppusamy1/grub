@@ -53,6 +53,15 @@ GRUB_MOD_LICENSE ("GPLv3+");
 #define F2FS_BLKSIZE              (1 << F2FS_BLK_BITS)
 #define F2FS_BLK_SEC_BITS         (F2FS_BLK_BITS - GRUB_DISK_SECTOR_BITS)
 
+/*
+ * F2FS conventionally uses 512 (1 << 9) blocks per 2 MiB segment.  Rather than
+ * hard-requiring that exact value, only reject a log_blocks_per_seg large
+ * enough to break the "1 << log_blocks_per_seg" computation in
+ * grub_f2fs_mount(): the unsigned shift stays a well-defined, non-zero
+ * grub_uint32_t for any exponent up to 31.
+ */
+#define F2FS_MAX_LOG_BLKS_PER_SEG 31
+
 #define VERSION_LEN               256
 #define F2FS_MAX_EXTENSION        64
 
@@ -471,6 +480,14 @@ grub_f2fs_sanity_check_sb (struct grub_f2fs_superblock *sb)
   if (sb->log_blocksize != grub_cpu_to_le32_compile_time (F2FS_BLK_BITS))
     return -1;
 
+  /*
+   * Bound log_blocks_per_seg so the "1 << log_blocks_per_seg" shift in
+   * grub_f2fs_mount() cannot invoke undefined behaviour or yield a zero
+   * segment size; the value is otherwise trusted.
+   */
+  if (grub_le_to_cpu32 (sb->log_blocks_per_seg) > F2FS_MAX_LOG_BLKS_PER_SEG)
+    return -1;
+
   log_sectorsize = grub_le_to_cpu32 (sb->log_sectorsize);
   log_sectors_per_block = grub_le_to_cpu32 (sb->log_sectors_per_block);
 
@@ -815,7 +832,16 @@ grub_f2fs_read_node (struct grub_f2fs_data *data,
 
   blkaddr = get_node_blkaddr (data, nid);
   if (!blkaddr)
-    return grub_errno;
+    {
+      /*
+       * A node id that resolves to block address 0 (NULL_ADDR) has no node
+       * block on disk.  Returning success here would leave *np uninitialised
+       * for the caller to read, so report an error instead.
+       */
+      if (grub_errno == GRUB_ERR_NONE)
+        grub_error (GRUB_ERR_BAD_FS, N_("invalid F2FS node address"));
+      return grub_errno;
+    }
 
   return grub_f2fs_block_read (data, blkaddr, np);
 }
@@ -846,7 +872,7 @@ grub_f2fs_mount (grub_disk_t disk)
   data->root_ino = grub_le_to_cpu32 (data->sblock.root_ino);
   data->cp_blkaddr = grub_le_to_cpu32 (data->sblock.cp_blkaddr);
   data->nat_blkaddr = grub_le_to_cpu32 (data->sblock.nat_blkaddr);
-  data->blocks_per_seg = 1 <<
+  data->blocks_per_seg = 1U <<
     grub_le_to_cpu32 (data->sblock.log_blocks_per_seg);
 
   err = grub_f2fs_read_cp (data);
