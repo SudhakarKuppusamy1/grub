@@ -979,6 +979,9 @@ grub_f2fs_read_file (grub_fshelp_node_t node,
                                 F2FS_BLK_SEC_BITS, 0);
 }
 
+/* Linux PATH_MAX: the longest symlink target any real F2FS image stores. */
+#define GRUB_F2FS_SYMLINK_MAX 4096
+
 static char *
 grub_f2fs_read_symlink (grub_fshelp_node_t node)
 {
@@ -995,6 +998,17 @@ grub_f2fs_read_symlink (grub_fshelp_node_t node)
     }
 
   filesize = grub_f2fs_file_size(&diro->inode.i);
+
+  /*
+   * A symlink target is a path; reject the absurd sizes a crafted inode can
+   * put in i_size instead of trying to allocate a buffer for them.  4096 is
+   * Linux PATH_MAX, above any target a real F2FS image stores.
+   */
+  if (filesize > GRUB_F2FS_SYMLINK_MAX)
+    {
+      grub_error (GRUB_ERR_BAD_FS, "symlink is too long");
+      return 0;
+    }
 
   if (grub_add (filesize, 1, &sz))
     {
