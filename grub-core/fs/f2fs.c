@@ -1132,6 +1132,8 @@ grub_f2fs_iterate_dir (grub_fshelp_node_t dir,
     .hook_data = hook_data
   };
   grub_off_t fpos = 0;
+  grub_off_t dir_size;
+  grub_uint64_t user_blocks, dir_blocks;
 
   if (!diro->inode_read)
     {
@@ -1145,7 +1147,27 @@ grub_f2fs_iterate_dir (grub_fshelp_node_t dir,
   if (inode->i_inline & F2FS_INLINE_DENTRY)
     return grub_f2fs_iterate_inline_dir (inode, &ctx);
 
-  while (fpos < grub_f2fs_file_size (inode))
+  dir_size = grub_f2fs_file_size (inode);
+
+  /*
+   * A directory is a file whose data blocks are a subset of the volume's
+   * user blocks, so a valid directory can never span more blocks than the
+   * filesystem itself has.  A crafted inode can instead declare an enormous
+   * i_size while none of its blocks are allocated; grub_fshelp_read_file()
+   * treats such holes as zero-filled blocks (see fshelp.c) rather than an
+   * error, so without this bound a single directory could turn listing into
+   * a near endless scan.  Reject anything larger than user_block_count.
+   */
+  user_blocks = grub_le_to_cpu64 (diro->data->ckpt.user_block_count);
+  dir_blocks = (dir_size >> F2FS_BLK_BITS)
+               + ((dir_size & (F2FS_BLKSIZE - 1)) ? 1 : 0);
+  if (dir_blocks > user_blocks)
+    {
+      grub_error (GRUB_ERR_BAD_FS, "directory is too large");
+      return 0;
+    }
+
+  while (fpos < dir_size)
     {
       struct grub_f2fs_dentry_block *de_blk;
       char *buf;
