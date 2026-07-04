@@ -1055,7 +1055,12 @@ grub_f2fs_check_dentries (struct grub_f2fs_dir_iter_ctx *ctx)
       ftype = ctx->dentry[i].file_type;
       name_len = grub_le_to_cpu16 (ctx->dentry[i].name_len);
 
-      if (name_len >= F2FS_NAME_LEN)
+      /*
+       * A zero name_len would leave "i" unchanged below ((0 + F2FS_SLOT_LEN
+       * - 1) / F2FS_SLOT_LEN == 0), spinning forever on the same bitmap slot
+       * for a crafted image that has the bit set but no real name stored.
+       */
+      if (name_len == 0 || name_len >= F2FS_NAME_LEN)
         return 0;
 
       if (grub_add (name_len, 1, &sz))
