@@ -40,6 +40,12 @@ variables:
   script:
     - $SCRIPT_DIR/build-clang.sh
 
+.build-windows:
+  dependencies:
+    - bootstrap
+  script:
+    - $SCRIPT_DIR/build-windows.sh
+
 .check-before-script:
   before_script:
     - |

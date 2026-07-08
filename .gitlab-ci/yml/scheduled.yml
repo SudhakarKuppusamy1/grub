@@ -6,6 +6,14 @@ trigger-build-clang:
     - if: $CI_PIPELINE_SOURCE == "schedule"
     - if: $CI_PIPELINE_SOURCE == "web"
 
+trigger-build-windows:
+  stage: scheduled
+  trigger:
+    include: '.gitlab-ci/yml/build-windows.yml'
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "schedule"
+    - if: $CI_PIPELINE_SOURCE == "web"
+
 trigger-x86_64-efi-check:
   stage: scheduled
   variables:
