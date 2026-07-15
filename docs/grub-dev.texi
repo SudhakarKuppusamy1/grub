@@ -647,8 +647,26 @@ cp libtasn1-4.21.0/@{README.md,COPYING,COPYING.LESSERv2@} grub-core/lib/libtasn1
 cp libtasn1-4.21.0/lib/@{coding.c,decoding.c,element.c,element.h,errors.c,gstr.c,gstr.h,int.h,parser_aux.c,parser_aux.h,structure.c,structure.h@} grub-core/lib/libtasn1/lib
 cp libtasn1-4.21.0/lib/includes/libtasn1.h grub-core/lib/libtasn1
 cp libtasn1-4.21.0/tests/@{CVE-2018-1000654-1_asn1_tab.h,CVE-2018-1000654-2_asn1_tab.h,CVE-2018-1000654.c,object-id-decoding.c,object-id-encoding.c,octet-string.c,reproducers.c,Test_overflow.c,Test_simple.c,Test_strings.c@} grub-core/lib/libtasn1/tests
+cp libtasn1-4.21.0/tests/@{coding-long-oid.c,Test_errors.c@} grub-core/lib/libtasn1/tests
+@end example
+
+@file{coding-long-oid.c} loads its ASN.1 definitions from the @file{pkix.asn}
+schema at run time. GRUB runs the tests inside a module with no filesystem, so
+the schema is pre-compiled into a @file{_asn1_tab.h} table with the
+@command{asn1Parser} tool built from the same tarball, and committed alongside
+the tests:
+
+@example
+(cd libtasn1-4.21.0 && ./configure && make)
+libtasn1-4.21.0/src/asn1Parser libtasn1-4.21.0/tests/pkix.asn -o grub-core/lib/libtasn1/tests/pkix_asn1_tab.h
 rm -rf libtasn1-4.21.0*
 @end example
+
+The @command{asn1Parser} step derives the table array name from the module name
+in the schema (@code{pkix_asn1_tab}). Only the libtasn1 tests that exercise the
+decoder are imported: GRUB builds libtasn1 without the DER encoder (see the
+@file{libtasn1-patches/}), so the upstream tests that write ASN.1 (for example
+@file{setof.c} and @file{Test_encoding.c}) cannot run here.
 
 After upgrading the library, it may be necessary to apply the patches in
 @file{grub-core/lib/libtasn1-patches/} to adjust the code to be compatible with
