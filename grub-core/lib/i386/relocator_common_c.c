@@ -51,11 +51,7 @@ grub_size_t grub_relocator_jumper_size = 12;
 #else
 grub_size_t grub_relocator_jumper_size = 7;
 #endif
-#if defined(__x86_64__) && defined(GRUB_MACHINE_EFI)
-grub_size_t grub_relocator_align = 4096;
-#else
 grub_size_t grub_relocator_align = 1;
-#endif
 
 #if defined(__x86_64__) && defined(GRUB_MACHINE_EFI)
 
