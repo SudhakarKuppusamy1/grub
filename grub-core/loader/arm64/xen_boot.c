@@ -295,7 +295,7 @@ single_binary_unload (struct xen_boot_binary *binary)
     grub_list_remove (GRUB_AS_LIST (binary));
 
   grub_dprintf ("xen_loader",
-		"Module struct memory free @ %p size: 0x%lx\n",
+		"Module struct memory free @ %p size: 0x%zx\n",
 		binary, sizeof (binary));
   grub_free (binary);
 
@@ -336,7 +336,7 @@ xen_boot_binary_load (struct xen_boot_binary *binary, grub_file_t file,
 		      int argc, char *argv[])
 {
   binary->size = grub_file_size (file);
-  grub_dprintf ("xen_loader", "Xen_boot file size: 0x%lx\n", binary->size);
+  grub_dprintf ("xen_loader", "Xen_boot file size: 0x%zx\n", binary->size);
 
   binary->start
     = (grub_addr_t) grub_efi_allocate_any_pages (GRUB_EFI_BYTES_TO_PAGES
@@ -348,7 +348,7 @@ xen_boot_binary_load (struct xen_boot_binary *binary, grub_file_t file,
       return;
     }
 
-  grub_dprintf ("xen_loader", "Xen_boot numpages: 0x%lx\n",
+  grub_dprintf ("xen_loader", "Xen_boot numpages: 0x%zx\n",
 	        GRUB_EFI_BYTES_TO_PAGES (binary->size + binary->align));
 
   if (grub_file_read (file, (void *) xen_boot_address_align (binary->start,
