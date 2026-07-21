@@ -112,11 +112,11 @@ kernel = {
   i386_xen_pvh_ldflags     = '$(TARGET_IMG_LDFLAGS)';
   i386_xen_pvh_ldflags     = '$(TARGET_IMG_BASE_LDOPT)$(TARGET_IMG_BASE_LDOPT_ARG_SEP)0x100000';
 
-  mips_loongson_ldflags    = '-Wl,-Ttext,0x80200000';
-  powerpc_ieee1275_ldflags = '-Wl,-Ttext,0x200000';
-  sparc64_ieee1275_ldflags = '-Wl,-Ttext,0x4400';
-  mips_arc_ldflags    = '-Wl,-Ttext,$(TARGET_LINK_ADDR)';
-  mips_qemu_mips_ldflags    = '-Wl,-Ttext,0x80200000';
+  mips_loongson_ldflags    = '$(TARGET_IMG_BASE_LDOPT)$(TARGET_IMG_BASE_LDOPT_ARG_SEP)0x80200000';
+  powerpc_ieee1275_ldflags = '$(TARGET_IMG_BASE_LDOPT)$(TARGET_IMG_BASE_LDOPT_ARG_SEP)0x200000';
+  sparc64_ieee1275_ldflags = '$(TARGET_IMG_BASE_LDOPT)$(TARGET_IMG_BASE_LDOPT_ARG_SEP)0x4400';
+  mips_arc_ldflags         = '$(TARGET_IMG_BASE_LDOPT)$(TARGET_IMG_BASE_LDOPT_ARG_SEP)$(TARGET_LINK_ADDR)';
+  mips_qemu_mips_ldflags   = '$(TARGET_IMG_BASE_LDOPT)$(TARGET_IMG_BASE_LDOPT_ARG_SEP)0x80200000';
 
   mips_arc_cppflags = '-DGRUB_DECOMPRESSOR_LINK_ADDR=$(TARGET_DECOMPRESSOR_LINK_ADDR)';
   i386_qemu_cppflags     = '-DGRUB_BOOT_MACHINE_LINK_ADDR=$(GRUB_BOOT_MACHINE_LINK_ADDR)';
