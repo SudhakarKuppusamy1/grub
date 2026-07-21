@@ -829,13 +829,13 @@ grub_ieee1275_ibm_cas (void)
     grub_ieee1275_cell_t result;
   } args;
 
-  grub_ieee1275_get_integer_property (grub_ieee1275_chosen,
-                                      "ibm,arch-vec-5-platform-support",
-                                      (grub_uint32_t *) ibm_arch_platform_support,
-                                      sizeof (ibm_arch_platform_support),
-                                      &actual);
+  grub_ieee1275_get_property (grub_ieee1275_chosen,
+                              "ibm,arch-vec-5-platform-support",
+                              ibm_arch_platform_support,
+                              sizeof (ibm_arch_platform_support),
+                              &actual);
 
-  for (i = 0; i < prop_len; i++)
+  for (i = 0; i < prop_len; i += 2) /* Skipping the property value. */
     {
       switch (ibm_arch_platform_support[i])
         {
@@ -864,8 +864,6 @@ grub_ieee1275_ibm_cas (void)
             /* Ignoring the other indexes of ibm,arch-vec-5-platform-support. */
             break;
         }
-      /* Skipping the property value. */
-      i++;
     }
 
   struct cas_vector vector =
