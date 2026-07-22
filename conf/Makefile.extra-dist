@@ -84,6 +84,7 @@ EXTRA_DIST += $(shell find $(top_srcdir)/grub-core/commands/tpm2_key_protector -
 EXTRA_DIST += grub-core/commands/tpm2_key_protector/tpm2key.asn
 
 EXTRA_DIST += grub-core/commands/appendedsig/appendedsig.h
+EXTRA_DIST += grub-core/commands/appendedsig/asn1_util.h
 
 EXTRA_DIST += grub-core/lib/LzmaDec.c
 
