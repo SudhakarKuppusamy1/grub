@@ -23,6 +23,8 @@
 #include <grub/gcrypt/gcrypt.h>
 #include <sys/types.h>
 
+#include "asn1_util.h"
+
 static char asn1_error[ASN1_MAX_ERROR_DESCRIPTION_SIZE];
 
 /* RFC 5652 s 5.1. */
