@@ -39,6 +39,7 @@
 #include <grub/efi/pks.h>
 
 #include "asn1_util.h"
+#include "x509.h"
 #include "appendedsig.h"
 
 GRUB_MOD_LICENSE ("GPLv3+");
@@ -49,11 +50,6 @@ GRUB_MOD_LICENSE ("GPLv3+");
 /* Appended signature magic string and size. */
 #define SIG_MAGIC          "~Module signature appended~\n"
 #define SIG_MAGIC_SIZE     ((sizeof(SIG_MAGIC) - 1))
-
-/* SHA256, SHA384 and SHA512 hash sizes. */
-#define SHA256_HASH_SIZE   32
-#define SHA384_HASH_SIZE   48
-#define SHA512_HASH_SIZE   64
 
 #define OPTION_BINARY_HASH 0
 #define OPTION_CERT_HASH   1
@@ -192,22 +188,15 @@ hexdump_colon (const grub_uint8_t *data, const grub_size_t length)
 static void
 print_certificate (const grub_x509_cert_t *cert, const grub_uint32_t cert_num)
 {
-  grub_uint32_t i;
-
   grub_printf ("\nCertificate: %u\n", cert_num);
   grub_printf ("    Data:\n");
   grub_printf ("        Version: %u (0x%u)\n", cert->version + 1, cert->version);
-  grub_printf ("        Serial Number:\n             ");
-
-  for (i = 0; i < cert->serial_len - 1; i++)
-    grub_printf ("%02x:", cert->serial[i]);
-
-  grub_printf ("%02x\n", cert->serial[cert->serial_len - 1]);
+  grub_printf ("        Serial Number: 0x%s\n", cert->serial);
   grub_printf ("        Issuer: %s\n", cert->issuer);
   grub_printf ("        Subject: %s\n", cert->subject);
   grub_printf ("        Subject Public Key Info:\n");
-  grub_printf ("            Public Key Algorithm: rsaEncryption\n");
-  grub_printf ("                RSA Public-Key: (%d bit)\n", cert->modulus_size);
+  grub_printf ("            Public Key Algorithm: %s\n", cert->spki.pk_algo.name);
+  grub_printf ("                Public-Key: (%d bit)\n", cert->spki.pk_len);
   grub_printf ("    Fingerprint: sha256\n         ");
   hexdump_colon (&cert->fingerprint[GRUB_FINGERPRINT_SHA256][0],
                  SHA256_HASH_SIZE);
@@ -298,10 +287,8 @@ is_cert_match (const grub_x509_cert_t *cert1, const grub_x509_cert_t *cert2)
   if (grub_memcmp (cert1->subject, cert2->subject, cert2->subject_len) == 0
       && grub_memcmp (cert1->issuer, cert2->issuer, cert2->issuer_len) == 0
       && grub_memcmp (cert1->serial, cert2->serial, cert2->serial_len) == 0
-      && _gcry_mpi_cmp (cert1->mpis[GRUB_RSA_PK_MODULUS],
-                        cert2->mpis[GRUB_RSA_PK_MODULUS]) == 0
-      && _gcry_mpi_cmp (cert1->mpis[GRUB_RSA_PK_EXPONENT],
-                        cert2->mpis[GRUB_RSA_PK_EXPONENT]) == 0
+      && _gcry_mpi_cmp (cert1->spki.pk.modulus, cert2->spki.pk.modulus) == 0
+      && _gcry_mpi_cmp (cert1->spki.pk.exponent, cert2->spki.pk.exponent) == 0
       && cert_fingerprint_match (cert1->fingerprint[GRUB_FINGERPRINT_SHA256],
                                  SHA256_HASH_SIZE, cert2) == true)
     return true;
@@ -467,12 +454,12 @@ add_certificate (const grub_uint8_t *data, const grub_size_t data_size,
   if (cert == NULL)
     return grub_error (GRUB_ERR_OUT_OF_MEMORY, "out of memory");
 
-  rc = grub_x509_cert_parse (data, data_size, cert);
+  rc = grub_x509_spec->parse_der (data, data_size, cert);
   if (rc != GRUB_ERR_NONE)
     {
       grub_dprintf ("appendedsig", "cannot add a certificate CN='%s' to the %s list\n",
                     cert->subject, (sb_database->is_db == true) ? "db" : "dbx");
-      grub_free (cert);
+      grub_x509_spec->free (cert);
       return rc;
     }
 
@@ -514,8 +501,8 @@ add_certificate (const grub_uint8_t *data, const grub_size_t data_size,
   return rc;
 
  fail:
-  grub_x509_cert_release (cert);
-  grub_free (cert);
+  grub_x509_spec->release (cert);
+  grub_x509_spec->free (cert);
 
   return rc;
 }
@@ -539,8 +526,8 @@ _remove_cert_from_db (const grub_x509_cert_t *cert)
                         "removed distrusted certificate with CN: %s from the db list\n",
                         curr_cert->subject);
           curr_cert->next = NULL;
-          grub_x509_cert_release (curr_cert);
-          grub_free (curr_cert);
+          grub_x509_spec->release (curr_cert);
+          grub_x509_spec->free (curr_cert);
           db.cert_entries--;
           break;
         }
@@ -562,7 +549,7 @@ remove_cert_from_db (const grub_uint8_t *data, const grub_size_t data_size)
   if (cert == NULL)
     return grub_error (GRUB_ERR_OUT_OF_MEMORY, "out of memory");
 
-  rc = grub_x509_cert_parse (data, data_size, cert);
+  rc = grub_x509_spec->parse_der (data, data_size, cert);
   if (rc != GRUB_ERR_NONE)
     {
       grub_dprintf ("appendedsig", "cannot remove an invalid certificate from the db list\n");
@@ -750,7 +737,7 @@ verify_binary_hash (const grub_uint8_t *data, const grub_size_t data_size)
  * S-expressions (sexp) and perform the signature verification.
  */
 static grub_err_t
-verify_signature (const gcry_mpi_t *pkmpi, const gcry_mpi_t hmpi,
+verify_signature (const grub_x509_cert_t *pk, const gcry_mpi_t hmpi,
                   const gcry_md_spec_t *hash, const grub_uint8_t *hval)
 {
   grub_err_t ret = GRUB_ERR_BAD_SIGNATURE;
@@ -762,10 +749,11 @@ verify_signature (const gcry_mpi_t *pkmpi, const gcry_mpi_t hmpi,
     goto exit;
 
   if (_gcry_sexp_build (&pubkey, &errof, "(public-key (dsa (n %M) (e %M)))",
-                        pkmpi[0], pkmpi[1]) != GPG_ERR_NO_ERROR)
+                        pk->spki.pk.modulus, pk->spki.pk.exponent) != GPG_ERR_NO_ERROR)
     goto exit;
 
-  if (_gcry_sexp_build (&sig, &errof, "(sig-val (rsa (s %M)))", hmpi) != GPG_ERR_NO_ERROR)
+  if (_gcry_sexp_build (&sig, &errof, "(sig-val (%s (s %M)))", pk->spki.pk_algo.aliases,
+                        hmpi) != GPG_ERR_NO_ERROR)
     goto exit;
 
   if (grub_crypto_pk_rsa->verify (sig, hsexp, pubkey) == GPG_ERR_NO_ERROR)
@@ -836,7 +824,7 @@ grub_verify_appended_signature (const grub_uint8_t *buf, grub_size_t bufsize)
 
       for (pk = db.certs; pk != NULL; pk = pk->next)
         {
-          ret = verify_signature (pk->mpis, si->sig_mpi, si->hash, hash);
+          ret = verify_signature (pk, si->sig_mpi, si->hash, hash);
           if (ret == GRUB_ERR_NONE)
             {
               if (append_key_mgmt == true && check_aginst_dbx (pk, NULL, 0, false) == true)
@@ -1033,7 +1021,7 @@ static grub_err_t
 grub_cmd_list_db (grub_command_t cmd __attribute__ ((unused)), int argc __attribute__ ((unused)),
                   char **args __attribute__ ((unused)))
 {
-  struct x509_certificate *cert;
+  grub_x509_cert_t *cert;
   grub_uint32_t i, cert_num = 1;
 
   for (cert = db.certs; cert != NULL; cert = cert->next, cert_num++)
@@ -1059,7 +1047,7 @@ static grub_err_t
 grub_cmd_list_dbx (grub_command_t cmd __attribute__((unused)),
                    int argc __attribute__((unused)), char **args __attribute__((unused)))
 {
-  struct x509_certificate *cert;
+  grub_x509_cert_t *cert;
   grub_uint32_t i, cert_num = 1;
 
   if (append_key_mgmt == false)
@@ -1387,8 +1375,8 @@ free_db_list (void)
     {
       cert = db.certs;
       db.certs = db.certs->next;
-      grub_x509_cert_release (cert);
-      grub_free (cert);
+      grub_x509_spec->release (cert);
+      grub_x509_spec->free (cert);
     }
 
   for (i = 0; i < db.hash_entries; i++)
@@ -1410,8 +1398,8 @@ free_dbx_list (void)
     {
       cert = dbx.certs;
       dbx.certs = dbx.certs->next;
-      grub_x509_cert_release (cert);
-      grub_free (cert);
+      grub_x509_spec->release (cert);
+      grub_x509_spec->free (cert);
     }
 
   for (i = 0; i < dbx.hash_entries; i++)

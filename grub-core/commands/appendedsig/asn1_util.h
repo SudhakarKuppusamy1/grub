@@ -22,6 +22,8 @@
 
 #include <libtasn1.h>
 
+#define GRUB_MAX_OID_LEN  32
+
 extern asn1_node grub_gnutls_gnutls_asn;
 extern asn1_node grub_gnutls_pkix_asn;
 
@@ -45,4 +47,9 @@ grub_asn1_init (void);
 extern void *
 grub_asn1_allocate_and_read (asn1_node node, const char *name, const char *friendly_name,
                              grub_int32_t *content_size);
+
+extern grub_err_t
+grub_asn1_read_rnd_sequence (asn1_node cert_asn1, const char *root_path, const char *oid,
+                             const grub_int32_t oid_len, char **name, grub_int32_t *name_size);
+
 #endif /* ASN1_UTIL_H */
