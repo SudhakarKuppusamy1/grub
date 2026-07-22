@@ -1260,6 +1260,12 @@ script = {
 
 script = {
   testcase = nonnative;
+  name = rmmod_test;
+  common = tests/rmmod_test.in;
+};
+
+script = {
+  testcase = nonnative;
   name = hddboot_test;
   common = tests/hddboot_test.in;
 };
