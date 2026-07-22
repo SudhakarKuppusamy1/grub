@@ -4167,6 +4167,7 @@ Modules can be loaded via the @command{insmod} (@pxref{insmod}) command.
 * cmp_module::
 * cmp_test_module::
 * configfile_module::
+* connectefi_module::
 * cpio_module::
 * cpio_be_module::
 * cpuid_module::
@@ -4687,6 +4688,14 @@ This module provides support for the commands: @command{configfile},
 @command{source}, @command{extract_entries_source},
 @command{extract_entries_configfile}, @command{.} (dot command).
 @xref{configfile} / @pxref{source}.
+
+@node connectefi_module
+@section connectefi
+This module provides support for the @command{connectefi} command. This command
+can be used on EFI platforms to connect SCSI I/O and DISK I/O EFI handles,
+which may be required when chainloading from the disk after booting from the
+network, or from one disk to another for example.
+@pxref{chainloader} / @pxref{connectefi} for more information.
 
 @node cpio_module
 @section cpio
@@ -6523,6 +6532,12 @@ image.
 If you specify the option @option{--force}, then load @var{file} forcibly,
 whether it has a correct signature or not. This is required when you want to
 load a defective boot loader, such as SCO UnixWare 7.1.
+
+On EFI platforms, when initially booting from the network, or booting from
+another disk, it may be required to connect the EFI devices using
+@command{connectefi} command (@pxref{connectefi}) prior to chainloading from 
+the disk, otherwise no disk may show up or the EFI partition on the disk may
+not be readable.
 @end deffn
 
 
@@ -7392,6 +7407,24 @@ Load @var{file} as a configuration file.  If @var{file} defines any menu
 entries, then show a menu containing them immediately.  Any environment
 variable changes made by the commands in @var{file} will not be preserved
 after @command{configfile} returns.
+@end deffn
+
+@node connectefi
+@subsection connectefi
+
+@deffn Command connectefi pciroot|disk|all
+When used with @samp{pciroot} parameter, all PCI devices are recursively
+connected, which may be a slow operation, depending on the hardware.
+
+When used with @samp{disk} parameter, only SCSI I/O and DISK I/O devices are
+connected; this is the recommended usage when chainloading to internal disk,
+unless some disks are not detected anyway, in such case @samp{all} may be used
+and a bug be reported to enhance the implementation.
+
+When used with @samp{all} parameter, all EFI devices are recursively connected,
+which may be an extremely slow operation, depending on the hardware.
+
+Note: This command is only available on EFI platforms.
 @end deffn
 
 

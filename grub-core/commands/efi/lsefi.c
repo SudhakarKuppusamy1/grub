@@ -123,9 +123,12 @@ grub_cmd_lsefi (grub_command_t cmd __attribute__ ((unused)),
 	    grub_printf ("  %pG\n", protocols[j]);
 	}
 
+      if (protocols)
+        grub_efi_free_pool (protocols);
     }
 
   grub_free (handles);
+
   return 0;
 }
 

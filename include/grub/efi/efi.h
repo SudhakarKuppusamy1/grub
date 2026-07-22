@@ -192,4 +192,28 @@ struct grub_net_card;
 grub_efi_handle_t
 grub_efinet_get_device_handle (struct grub_net_card *card);
 
+static inline grub_efi_status_t
+grub_efi_allocate_pool (grub_efi_memory_type_t pool_type,
+                       grub_efi_uintn_t buffer_size,
+                       void **buffer)
+{
+  grub_efi_boot_services_t *b;
+  grub_efi_status_t status;
+
+  b = grub_efi_system_table->boot_services;
+  status = b->allocate_pool (pool_type, buffer_size, buffer);
+  return status;
+}
+
+static inline grub_efi_status_t
+grub_efi_free_pool (void *buffer)
+{
+  grub_efi_boot_services_t *b;
+  grub_efi_status_t status;
+
+  b = grub_efi_system_table->boot_services;
+  status = b->free_pool (buffer);
+  return status;
+}
+
 #endif /* ! GRUB_EFI_EFI_HEADER */
