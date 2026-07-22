@@ -25,6 +25,7 @@
 #include <grub/misc.h>
 #include <grub/gcrypt/gcrypt.h>
 
+#include "asn1_util.h"
 #include "appendedsig.h"
 
 static char asn1_error[ASN1_MAX_ERROR_DESCRIPTION_SIZE];

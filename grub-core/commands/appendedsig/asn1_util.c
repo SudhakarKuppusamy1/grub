@@ -17,15 +17,11 @@
  *  along with GRUB.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-#include <libtasn1.h>
 #include <grub/types.h>
-#include <grub/err.h>
 #include <grub/mm.h>
-#include <grub/crypto.h>
-#include <grub/misc.h>
-#include <grub/gcrypt/gcrypt.h>
+#include <grub/err.h>
 
-#include "appendedsig.h"
+#include "asn1_util.h"
 
 asn1_node grub_gnutls_gnutls_asn = NULL;
 asn1_node grub_gnutls_pkix_asn = NULL;
@@ -54,11 +50,18 @@ grub_asn1_allocate_and_read (asn1_node node, const char *name, const char *frien
   grub_uint8_t *tmpstr = NULL;
   grub_int32_t tmpstr_size = 0;
 
-  result = asn1_read_value (node, name, NULL, &tmpstr_size);
-  if (result != ASN1_MEM_ERROR)
+  if (node == NULL || name == NULL || friendly_name == NULL || content_size == NULL)
     {
-      grub_error (GRUB_ERR_BAD_FILE_TYPE, "reading size of %s did not return expected status: %s",
-                  friendly_name, asn1_strerror (result)) ;
+      grub_error (GRUB_ERR_BAD_ARGUMENT, "bad input data");
+      return NULL;
+    }
+
+  result = asn1_read_value (node, name, NULL, &tmpstr_size);
+  if (result != ASN1_MEM_ERROR || tmpstr_size == 0)
+    {
+      grub_error (GRUB_ERR_BAD_FILE_TYPE, "error reading size of %s: %s",
+                  friendly_name,
+                  ((result != ASN1_MEM_ERROR) ? asn1_strerror (result) : "contains zero bytes"));
       return NULL;
     }
 
@@ -71,11 +74,11 @@ grub_asn1_allocate_and_read (asn1_node node, const char *name, const char *frien
     }
 
   result = asn1_read_value (node, name, tmpstr, &tmpstr_size);
-  if (result != ASN1_SUCCESS)
+  if (result != ASN1_SUCCESS || tmpstr_size == 0)
     {
       grub_free (tmpstr);
       grub_error (GRUB_ERR_BAD_FILE_TYPE, "error reading %s: %s", friendly_name,
-                  asn1_strerror (result)) ;
+                  ((result != ASN1_SUCCESS) ? asn1_strerror (result) : "contains zero bytes"));
       return NULL;
     }
 
