@@ -17,15 +17,11 @@
  *  along with GRUB.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-#include <libtasn1.h>
 #include <grub/types.h>
-#include <grub/err.h>
 #include <grub/mm.h>
-#include <grub/crypto.h>
-#include <grub/misc.h>
-#include <grub/gcrypt/gcrypt.h>
+#include <grub/err.h>
 
-#include "appendedsig.h"
+#include "asn1_util.h"
 
 asn1_node grub_gnutls_gnutls_asn = NULL;
 asn1_node grub_gnutls_pkix_asn = NULL;

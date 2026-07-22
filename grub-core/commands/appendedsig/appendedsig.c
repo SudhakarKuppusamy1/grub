@@ -38,6 +38,7 @@
 #endif
 #include <grub/efi/pks.h>
 
+#include "asn1_util.h"
 #include "appendedsig.h"
 
 GRUB_MOD_LICENSE ("GPLv3+");
