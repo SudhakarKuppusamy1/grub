@@ -169,6 +169,7 @@
           - partmap_test
           - pata_test
           - pseries_test
+          - rmmod_test
           - serial_test
           - test_sha512sum
           - test_unset
