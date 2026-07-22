@@ -39,6 +39,7 @@
 #include <grub/efi/pks.h>
 
 #include "asn1_util.h"
+#include "x509.h"
 #include "appendedsig.h"
 
 GRUB_MOD_LICENSE ("GPLv3+");
@@ -206,8 +207,8 @@ print_certificate (const grub_x509_cert_t *cert, const grub_uint32_t cert_num)
   grub_printf ("        Issuer: %s\n", cert->issuer);
   grub_printf ("        Subject: %s\n", cert->subject);
   grub_printf ("        Subject Public Key Info:\n");
-  grub_printf ("            Public Key Algorithm: rsaEncryption\n");
-  grub_printf ("                RSA Public-Key: (%d bit)\n", cert->modulus_size);
+  grub_printf ("            Public Key Algorithm: %s\n", cert->spki.pk_algo.name);
+  grub_printf ("                Public-Key: (%d bit)\n", cert->spki.pk_len);
   grub_printf ("    Fingerprint: sha256\n         ");
   hexdump_colon (&cert->fingerprint[GRUB_FINGERPRINT_SHA256][0],
                  grub_strlen ((char *) cert->fingerprint[GRUB_FINGERPRINT_SHA256]));
@@ -384,10 +385,10 @@ is_cert_match (const grub_x509_cert_t *cert1, const grub_x509_cert_t *cert2)
   if (grub_memcmp (cert1->subject, cert2->subject, cert2->subject_len) == 0
       && grub_memcmp (cert1->issuer, cert2->issuer, cert2->issuer_len) == 0
       && grub_memcmp (cert1->serial, cert2->serial, cert2->serial_len) == 0
-      && grub_memcmp (cert1->mpis[GRUB_RSA_PK_MODULUS], cert2->mpis[GRUB_RSA_PK_MODULUS],
-                      sizeof (cert2->mpis[GRUB_RSA_PK_MODULUS])) == 0
-      && grub_memcmp (cert1->mpis[GRUB_RSA_PK_EXPONENT], cert2->mpis[GRUB_RSA_PK_EXPONENT],
-                      sizeof (cert2->mpis[GRUB_RSA_PK_EXPONENT])) == 0
+      && grub_memcmp (cert1->spki.pk[GRUB_RSA_PK_MODULUS], cert2->spki.pk[GRUB_RSA_PK_MODULUS],
+                      sizeof (cert2->spki.pk[GRUB_RSA_PK_MODULUS])) == 0
+      && grub_memcmp (cert1->spki.pk[GRUB_RSA_PK_EXPONENT], cert2->spki.pk[GRUB_RSA_PK_EXPONENT],
+                      sizeof (cert2->spki.pk[GRUB_RSA_PK_EXPONENT])) == 0
       && grub_memcmp (cert1->fingerprint[GRUB_FINGERPRINT_SHA256],
                       cert2->fingerprint[GRUB_FINGERPRINT_SHA256],
                       grub_strlen ((char *) cert2->fingerprint[GRUB_FINGERPRINT_SHA256])) == 0)
@@ -454,7 +455,7 @@ add_certificate (const grub_uint8_t *data, const grub_size_t data_size,
   if (cert == NULL)
     return grub_error (GRUB_ERR_OUT_OF_MEMORY, "out of memory");
 
-  rc = grub_x509_cert_parse (data, data_size, cert);
+  rc = grub_x509_cert_parse_der (data, data_size, cert);
   if (rc != GRUB_ERR_NONE)
     {
       grub_dprintf ("appendedsig", "cannot add a certificate CN='%s' to the %s list\n",
@@ -549,7 +550,7 @@ remove_cert_from_db (const grub_uint8_t *data, const grub_size_t data_size)
   if (cert == NULL)
     return grub_error (GRUB_ERR_OUT_OF_MEMORY, "out of memory");
 
-  rc = grub_x509_cert_parse (data, data_size, cert);
+  rc = grub_x509_cert_parse_der (data, data_size, cert);
   if (rc != GRUB_ERR_NONE)
     {
       grub_dprintf ("appendedsig", "cannot remove an invalid certificate from the db list\n");
@@ -884,7 +885,7 @@ grub_verify_appended_signature (const grub_uint8_t *buf, grub_size_t bufsize)
 
       for (pk = db.certs; pk != NULL; pk = pk->next)
         {
-          err = verify_signature (pk->mpis, si->sig_mpi, si->hash, hash);
+          err = verify_signature (pk->spki.pk, si->sig_mpi, si->hash, hash);
           if (err == GRUB_ERR_NONE)
             {
               grub_dprintf ("appendedsig", "verify signer %d with key '%s' succeeded\n",
@@ -1070,7 +1071,7 @@ static grub_err_t
 grub_cmd_list_db (grub_command_t cmd __attribute__ ((unused)), int argc __attribute__ ((unused)),
                   char **args __attribute__ ((unused)))
 {
-  struct x509_certificate *cert;
+  grub_x509_cert_t *cert;
   grub_uint32_t i, cert_num = 1;
 
   for (cert = db.certs; cert != NULL; cert = cert->next, cert_num++)
@@ -1096,7 +1097,7 @@ static grub_err_t
 grub_cmd_list_dbx (grub_command_t cmd __attribute__((unused)),
                    int argc __attribute__((unused)), char **args __attribute__((unused)))
 {
-  struct x509_certificate *cert;
+  grub_x509_cert_t *cert;
   grub_uint32_t i, cert_num = 1;
 
   if (append_key_mgmt == false)

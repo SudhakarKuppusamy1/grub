@@ -24,6 +24,7 @@
 #include <sys/types.h>
 
 #include "asn1_util.h"
+#include "x509.h"
 
 static char asn1_error[ASN1_MAX_ERROR_DESCRIPTION_SIZE];
 
