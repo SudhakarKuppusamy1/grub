@@ -17,59 +17,239 @@
  *  along with GRUB.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-#include "appendedsig.h"
 #include <grub/misc.h>
-#include <grub/crypto.h>
-#include <grub/gcrypt/gcrypt.h>
 #include <sys/types.h>
+#include <grub/gcrypt/gcrypt.h>
 
 #include "asn1_util.h"
-#include "x509.h"
+#include "pkcs7.h"
 
 static char asn1_error[ASN1_MAX_ERROR_DESCRIPTION_SIZE];
 
 /* RFC 5652 s 5.1. */
-static const char *signedData_oid = "1.2.840.113549.1.7.2";
+static const char *signed_data_oid = "1.2.840.113549.1.7.2";
 
 /* RFC 4055 s 2.1. */
-static const char *sha256_oid = "2.16.840.1.101.3.4.2.1";
-static const char *sha512_oid = "2.16.840.1.101.3.4.2.3";
+static const grub_mdalgo_t md_algos [] =
+{
+  {"sha256", "2.16.840.1.101.3.4.2.1", 22, &_gcry_digest_spec_sha256},
+  {"sha512", "2.16.840.1.101.3.4.2.3", 22, &_gcry_digest_spec_sha512}
+};
+
+static void
+pkcs7_free_signers (grub_pkcs7_signer_t *signers);
 
 static grub_err_t
-process_content (grub_uint8_t *content, grub_int32_t size, grub_pkcs7_data_t *msg)
+pkcs7_get_version (asn1_node pkcs7_asn1, grub_pkcs7_signed_data_t *pkcs7_signed_data)
 {
-  grub_int32_t res;
-  asn1_node signed_part;
-  grub_err_t err = GRUB_ERR_NONE;
-  char algo_oid[GRUB_MAX_OID_LEN];
-  grub_int32_t algo_oid_size;
-  grub_int32_t algo_count;
-  grub_int32_t signer_count;
-  grub_int32_t i;
+  grub_int32_t rc;
+  grub_int32_t version_size;
   char version;
-  grub_int32_t version_size = sizeof (version);
-  grub_uint8_t *result_buf;
-  grub_int32_t result_size = 0;
-  grub_int32_t crls_size = 0;
-  gcry_error_t gcry_err;
-  bool sha256_in_da, sha256_in_si, sha512_in_da, sha512_in_si;
-  char *da_path;
-  char *si_sig_path;
-  char *si_da_path;
 
-  res = asn1_create_element (grub_gnutls_pkix_asn, "PKIX1.pkcs-7-SignedData", &signed_part);
-  if (res != ASN1_SUCCESS)
+  rc = asn1_read_value (pkcs7_asn1, "version", &version, &version_size);
+  if (rc != ASN1_SUCCESS)
+    return grub_error (GRUB_ERR_BAD_SIGNATURE, "error reading signedData version: %s",
+                       asn1_strerror (rc));
+
+  /* Signature version must be 1 because appended signature only support v1. */
+  if (version != 1)
+    return grub_error (GRUB_ERR_BAD_SIGNATURE,
+                       "unexpected signature version v%d, only v1 supported", version);
+
+  pkcs7_signed_data->version = 1;
+
+  return GRUB_ERR_NONE;
+}
+
+static grub_err_t
+pkcs7_get_digest_algo (asn1_node pkcs7_asn1, grub_int32_t algo_index,
+                       grub_pkcs7_signed_data_t *pkcs7_signed_data)
+{
+  grub_int32_t rc, i;
+  char *digest_path;
+  char algo_oid[GRUB_MAX_OID_LEN];
+  grub_int32_t algo_oid_size = sizeof (algo_oid);
+
+  digest_path = grub_xasprintf ("digestAlgorithms.?%d.algorithm", algo_index + 1);
+  if (digest_path == NULL)
     return grub_error (GRUB_ERR_OUT_OF_MEMORY,
-                       "could not create ASN.1 structure for PKCS#7 signed part");
+                       "could not allocate path for digest algorithm parsing path");
 
-  res = asn1_der_decoding2 (&signed_part, content, &size,
-                            ASN1_DECODE_FLAG_STRICT_DER, asn1_error);
-  if (res != ASN1_SUCCESS)
+  rc = asn1_read_value (pkcs7_asn1, digest_path, algo_oid, &algo_oid_size);
+  if (rc != ASN1_SUCCESS)
     {
-      err = grub_error (GRUB_ERR_BAD_SIGNATURE,
-                        "error reading PKCS#7 signed data: %s", asn1_error);
-      goto cleanup_signed_part;
+      grub_free (digest_path);
+      return grub_error (GRUB_ERR_BAD_SIGNATURE, "error reading digest algorithm: %s",
+                         asn1_strerror (rc));
     }
+
+  grub_free (digest_path);
+
+  for (i = 0; i < sizeof (md_algos)/sizeof(md_algos[0]); i++)
+    {
+      if (grub_strncmp (algo_oid, md_algos[i].oid, md_algos[i].oid_len) == 0 &&
+		        md_algos[i].oid_len == algo_oid_size - 1)
+        {
+          grub_memcpy (&pkcs7_signed_data->digest_algo, &md_algos[i], sizeof (md_algos[i]));
+          return GRUB_ERR_NONE;
+        }
+    }
+
+  return grub_error (GRUB_ERR_NOT_IMPLEMENTED_YET,
+                     "only SHA-256 and SHA-512 hashes are supported, found OID %s",
+                     algo_oid);
+}
+
+static grub_err_t
+pkcs7_get_digest_algorithms (asn1_node pkcs7_asn1, grub_pkcs7_signed_data_t *pkcs7_signed_data)
+{
+  grub_int32_t rc;
+  grub_err_t ret;
+  grub_int32_t algo_count;
+
+  rc = asn1_number_of_elements (pkcs7_asn1, "digestAlgorithms", &algo_count);
+  if (rc != ASN1_SUCCESS)
+    return grub_error (GRUB_ERR_BAD_SIGNATURE, "error counting number of digest algorithms: %s",
+                       asn1_strerror (rc));
+
+  if (algo_count <= 0 || algo_count > 1)
+    return grub_error (GRUB_ERR_BAD_SIGNATURE,
+                       "only one digest algorithm is required");
+
+  ret = pkcs7_get_digest_algo (pkcs7_asn1, 0, pkcs7_signed_data);
+  if (ret != GRUB_ERR_NONE)
+    return ret;
+
+  return GRUB_ERR_NONE;
+}
+
+static grub_err_t
+pkcs7_get_signerinfo_digalgo (asn1_node pkcs7_asn1, grub_int32_t signer_index,
+                              grub_pkcs7_signer_t *signer)
+{
+  grub_int32_t rc, i;
+  char *digest_algo_path;
+  char algo_oid[GRUB_MAX_OID_LEN];
+  grub_int32_t algo_oid_size = sizeof (algo_oid);
+
+  digest_algo_path = grub_xasprintf ("signerInfos.?%d.digestAlgorithm.algorithm",
+                                     signer_index + 1);
+  if (digest_algo_path == NULL)
+    return grub_error (GRUB_ERR_OUT_OF_MEMORY,
+                       "could not allocate path for signer %d's digest algorithm parsing path",
+                       signer_index);
+
+  rc = asn1_read_value (pkcs7_asn1, digest_algo_path, algo_oid, &algo_oid_size);
+  if (rc != ASN1_SUCCESS)
+    {
+      grub_free (digest_algo_path);
+      return grub_error (GRUB_ERR_BAD_SIGNATURE,
+                         "error reading signer %d's digest algorithm: %s", signer_index,
+		         asn1_strerror (rc));
+    }
+
+  grub_free (digest_algo_path);
+
+  for (i = 0; i < sizeof (md_algos)/sizeof(md_algos[0]); i++)
+    {
+      if (grub_strncmp (algo_oid, md_algos[i].oid, md_algos[i].oid_len) == 0 &&
+		        md_algos[i].oid_len == algo_oid_size - 1)
+        {
+          grub_memcpy (&signer->digest_algo, &md_algos[i], sizeof (md_algos[i]));
+          return GRUB_ERR_NONE;
+        }
+    }
+
+  return grub_error (GRUB_ERR_NOT_IMPLEMENTED_YET,
+                     "only SHA-256 and SHA-512 hashes are supported, found OID %s",
+                     algo_oid);
+}
+
+static grub_err_t
+pkcs7_get_signerinfo_signature (asn1_node pkcs7_asn1, grub_int32_t signer_index,
+                                grub_pkcs7_signer_t *signer)
+{
+  gcry_error_t gcry_err;
+  grub_uint8_t *signature;
+  grub_int32_t signature_len = 0;
+  char *sig_path;
+
+  sig_path = grub_xasprintf ("signerInfos.?%d.signature", signer_index + 1);
+  if (sig_path == NULL)
+    return grub_error (GRUB_ERR_OUT_OF_MEMORY,
+                       "could not allocate path for signer %d's signature parsing path",
+		       signer_index);
+
+  signature = grub_asn1_allocate_and_read (pkcs7_asn1, sig_path, "signature data",
+                                           &signature_len);
+  grub_free (sig_path);
+  if (signature == NULL)
+    return grub_errno;
+
+  gcry_err = _gcry_mpi_scan (&signer->signature, GCRYMPI_FMT_USG, signature,
+                             signature_len, NULL);
+  grub_free (signature);
+  if (gcry_err != GPG_ERR_NO_ERROR)
+    return grub_error (GRUB_ERR_BAD_SIGNATURE,
+                       "error loading signature %d into MPI structure: %d",
+                       signer_index, gcry_err);
+
+  return GRUB_ERR_NONE;
+}
+
+static grub_err_t
+pkcs7_get_signerinfos (asn1_node pkcs7_asn1, grub_pkcs7_signed_data_t *pkcs7_signed_data)
+{
+  grub_err_t ret = GRUB_ERR_NONE;
+  grub_int32_t rc, i;
+  grub_int32_t signer_count;
+  grub_pkcs7_signer_t *signer, *signers = pkcs7_signed_data->signers;
+
+  rc = asn1_number_of_elements (pkcs7_asn1, "signerInfos", &signer_count);
+  if (rc != ASN1_SUCCESS)
+    return grub_error (GRUB_ERR_BAD_SIGNATURE, "error counting number of signers: %s",
+                       asn1_strerror (rc));
+
+  if (signer_count <= 0)
+    return grub_error (GRUB_ERR_BAD_SIGNATURE, "a minimum of 1 signer is required");
+
+  pkcs7_signed_data->no_of_signers = 0;
+
+  for (i = 0; i < signer_count; i++)
+    {
+      signer = grub_zalloc (sizeof (grub_pkcs7_signer_t));
+      if (signer == NULL)
+        return grub_error (GRUB_ERR_OUT_OF_MEMORY,
+                           "could not allocate space for signers");
+
+      ret = pkcs7_get_signerinfo_digalgo (pkcs7_asn1, i, signer);
+      if (ret == GRUB_ERR_NONE)
+        {
+          ret = pkcs7_get_signerinfo_signature (pkcs7_asn1, i, signer);
+          if (ret == GRUB_ERR_NONE)
+            {
+              signer->next = (signers != NULL ? signers : NULL);
+              signers = signer;
+              pkcs7_signed_data->no_of_signers++;
+            }
+        }
+
+      if (ret != GRUB_ERR_NONE)
+        pkcs7_free_signers (signer);
+    }
+
+  pkcs7_signed_data->signers = signers;
+
+  return GRUB_ERR_NONE;
+}
+
+static grub_err_t
+pkcs7_parse_signed_data (grub_uint8_t *signed_data, grub_int32_t signed_data_len,
+                         grub_pkcs7_signed_data_t *pkcs7_signed_data)
+{
+  grub_err_t ret;
+  grub_int32_t rc;
+  asn1_node pkcs7_asn1;
 
   /*
    * SignedData ::= SEQUENCE {
@@ -80,22 +260,24 @@ process_content (grub_uint8_t *content, grub_int32_t size, grub_pkcs7_data_t *ms
    *     crls [1] IMPLICIT RevocationInfoChoices OPTIONAL,
    *     signerInfos SignerInfos }
    */
+  rc = asn1_create_element (grub_gnutls_pkix_asn, "PKIX1.pkcs-7-SignedData", &pkcs7_asn1);
+  if (rc != ASN1_SUCCESS)
+    return grub_error (GRUB_ERR_OUT_OF_MEMORY,
+                       "could not create ASN.1 structure for PKCS#7 signed part");
 
-  res = asn1_read_value (signed_part, "version", &version, &version_size);
-  if (res != ASN1_SUCCESS)
+  rc = asn1_der_decoding2 (&pkcs7_asn1, signed_data, &signed_data_len,
+                           ASN1_DECODE_FLAG_STRICT_DER, asn1_error);
+  if (rc != ASN1_SUCCESS)
     {
-      err = grub_error (GRUB_ERR_BAD_SIGNATURE, "error reading signedData version: %s",
-                        asn1_strerror (res));
-      goto cleanup_signed_part;
+      ret = grub_error (GRUB_ERR_BAD_SIGNATURE,
+                        "error reading PKCS#7 signed data: %s", asn1_error);
+      goto exit;
     }
 
-  /* Signature version must be 1 because appended signature only support v1. */
-  if (version != 1)
-    {
-      err = grub_error (GRUB_ERR_BAD_SIGNATURE,
-                        "unexpected signature version v%d, only v1 supported", version);
-      goto cleanup_signed_part;
-    }
+  /* version CMSVersion */
+  ret = pkcs7_get_version (pkcs7_asn1, pkcs7_signed_data);
+  if (ret != GRUB_ERR_NONE)
+    goto exit;
 
   /*
    * digestAlgorithms DigestAlgorithmIdentifiers
@@ -109,295 +291,53 @@ process_content (grub_uint8_t *content, grub_int32_t size, grub_pkcs7_data_t *ms
    *
    * We only support 1 element in the set, and we do not check parameters atm.
    */
-  res = asn1_number_of_elements (signed_part, "digestAlgorithms", &algo_count);
-  if (res != ASN1_SUCCESS)
-    {
-      err = grub_error (GRUB_ERR_BAD_SIGNATURE, "error counting number of digest algorithms: %s",
-                        asn1_strerror (res));
-      goto cleanup_signed_part;
-    }
+  ret = pkcs7_get_digest_algorithms (pkcs7_asn1, pkcs7_signed_data);
+  if (ret != GRUB_ERR_NONE)
+    goto exit;
 
-  if (algo_count <= 0)
-    {
-      err = grub_error (GRUB_ERR_BAD_SIGNATURE, "a minimum of 1 digest algorithm is required");
-      goto cleanup_signed_part;
-    }
+  /* Read the signerInfos */
+  ret = pkcs7_get_signerinfos (pkcs7_asn1, pkcs7_signed_data);
 
-  if (algo_count > 2)
-    {
-      err = grub_error (GRUB_ERR_NOT_IMPLEMENTED_YET, "a maximum of 2 digest algorithms is supported");
-      goto cleanup_signed_part;
-    }
+ exit:
+  asn1_delete_structure (&pkcs7_asn1);
 
-  sha256_in_da = false;
-  sha512_in_da = false;
-
-  for (i = 0; i < algo_count; i++)
-    {
-      da_path = grub_xasprintf ("digestAlgorithms.?%d.algorithm", i + 1);
-      if (da_path == NULL)
-        {
-          err = grub_error (GRUB_ERR_OUT_OF_MEMORY,
-                            "could not allocate path for digest algorithm parsing path");
-          goto cleanup_signed_part;
-        }
-
-      algo_oid_size = sizeof (algo_oid);
-      res = asn1_read_value (signed_part, da_path, algo_oid, &algo_oid_size);
-      if (res != ASN1_SUCCESS)
-        {
-          err = grub_error (GRUB_ERR_BAD_SIGNATURE, "error reading digest algorithm: %s",
-                            asn1_strerror (res));
-          grub_free (da_path);
-          goto cleanup_signed_part;
-        }
-
-      if (grub_strncmp (sha512_oid, algo_oid, algo_oid_size) == 0)
-        {
-          if (sha512_in_da == false)
-            sha512_in_da = true;
-          else
-            {
-              err = grub_error (GRUB_ERR_BAD_SIGNATURE,
-                                "SHA-512 specified twice in digest algorithm list");
-              grub_free (da_path);
-              goto cleanup_signed_part;
-            }
-        }
-      else if (grub_strncmp (sha256_oid, algo_oid, algo_oid_size) == 0)
-        {
-          if (sha256_in_da == false)
-            sha256_in_da = true;
-          else
-            {
-              err = grub_error (GRUB_ERR_BAD_SIGNATURE,
-                                "SHA-256 specified twice in digest algorithm list");
-              grub_free (da_path);
-              goto cleanup_signed_part;
-            }
-        }
-      else
-        {
-          err = grub_error (GRUB_ERR_NOT_IMPLEMENTED_YET,
-                            "only SHA-256 and SHA-512 hashes are supported, found OID %s",
-                            algo_oid);
-          grub_free (da_path);
-          goto cleanup_signed_part;
-        }
-
-      grub_free (da_path);
-    }
-
-  /* At this point, at least one of sha{256,512}_in_da must be true. */
-
-  /*
-   * We ignore the certificates, but we don't permit CRLs. A CRL entry might be
-   * revoking the certificate we're using, and we have no way of dealing with
-   * that at the moment.
-   */
-  res = asn1_read_value (signed_part, "crls", NULL, &crls_size);
-  if (res != ASN1_ELEMENT_NOT_FOUND)
-    {
-      err = grub_error (GRUB_ERR_NOT_IMPLEMENTED_YET,
-                        "PKCS#7 messages with embedded CRLs are not supported");
-      goto cleanup_signed_part;
-    }
-
-  /* Read the signatures */
-  res = asn1_number_of_elements (signed_part, "signerInfos", &signer_count);
-  if (res != ASN1_SUCCESS)
-    {
-      err = grub_error (GRUB_ERR_BAD_SIGNATURE, "error counting number of signers: %s",
-                        asn1_strerror (res));
-      goto cleanup_signed_part;
-    }
-
-  if (signer_count <= 0)
-    {
-      err = grub_error (GRUB_ERR_BAD_SIGNATURE, "a minimum of 1 signer is required");
-      goto cleanup_signed_part;
-    }
-
-  msg->signers = grub_calloc (signer_count, sizeof (grub_pkcs7_signer_t));
-  if (msg->signers == NULL)
-    {
-      err = grub_error (GRUB_ERR_OUT_OF_MEMORY,
-                        "could not allocate space for %d signers", signer_count);
-      goto cleanup_signed_part;
-    }
-
-  msg->signer_count = 0;
-  for (i = 0; i < signer_count; i++)
-    {
-      si_da_path = grub_xasprintf ("signerInfos.?%d.digestAlgorithm.algorithm", i + 1);
-      if (si_da_path == NULL)
-        {
-          err = grub_error (GRUB_ERR_OUT_OF_MEMORY,
-                            "could not allocate path for signer %d's digest algorithm parsing path",
-                            i);
-          goto cleanup_signerInfos;
-        }
-
-      algo_oid_size = sizeof (algo_oid);
-      res = asn1_read_value (signed_part, si_da_path, algo_oid, &algo_oid_size);
-      if (res != ASN1_SUCCESS)
-        {
-          err = grub_error (GRUB_ERR_BAD_SIGNATURE,
-                            "error reading signer %d's digest algorithm: %s", i, asn1_strerror (res));
-          grub_free (si_da_path);
-          goto cleanup_signerInfos;
-        }
-
-      grub_free (si_da_path);
-
-      if (grub_strncmp (sha512_oid, algo_oid, algo_oid_size) == 0)
-        {
-          if (sha512_in_da == false)
-            {
-              err = grub_error (GRUB_ERR_BAD_SIGNATURE,
-                                "signer %d claims a SHA-512 signature which was not "
-                                "specified in the outer DigestAlgorithms", i);
-              goto cleanup_signerInfos;
-            }
-          else
-            {
-              sha512_in_si = true;
-              msg->signers[i].hash = grub_crypto_lookup_md_by_name ("sha512");
-            }
-        }
-      else if (grub_strncmp (sha256_oid, algo_oid, algo_oid_size) == 0)
-        {
-          if (sha256_in_da == false)
-            {
-              err = grub_error (GRUB_ERR_BAD_SIGNATURE,
-                                "signer %d claims a SHA-256 signature which was not "
-                                "specified in the outer DigestAlgorithms", i);
-              goto cleanup_signerInfos;
-            }
-          else
-            {
-              sha256_in_si = true;
-              msg->signers[i].hash = grub_crypto_lookup_md_by_name ("sha256");
-            }
-        }
-      else
-        {
-          err = grub_error (GRUB_ERR_NOT_IMPLEMENTED_YET,
-                            "only SHA-256 and SHA-512 hashes are supported, found OID %s",
-                            algo_oid);
-          goto cleanup_signerInfos;
-        }
-
-      if (msg->signers[i].hash == NULL)
-        {
-          err = grub_error (GRUB_ERR_BAD_SIGNATURE,
-                            "Hash algorithm for signer %d (OID %s) not loaded", i, algo_oid);
-          goto cleanup_signerInfos;
-        }
-
-      si_sig_path = grub_xasprintf ("signerInfos.?%d.signature", i + 1);
-      if (si_sig_path == NULL)
-        {
-          err = grub_error (GRUB_ERR_OUT_OF_MEMORY,
-                            "could not allocate path for signer %d's signature parsing path", i);
-          goto cleanup_signerInfos;
-        }
-
-      result_buf = grub_asn1_allocate_and_read (signed_part, si_sig_path, "signature data", &result_size);
-      grub_free (si_sig_path);
-
-      if (result_buf == NULL)
-        {
-          err = grub_errno;
-          goto cleanup_signerInfos;
-        }
-
-      gcry_err = _gcry_mpi_scan (&(msg->signers[i].sig_mpi), GCRYMPI_FMT_USG,
-                                 result_buf, result_size, NULL);
-      grub_free (result_buf);
-
-      if (gcry_err != GPG_ERR_NO_ERROR)
-        {
-          err = grub_error (GRUB_ERR_BAD_SIGNATURE,
-                            "error loading signature %d into MPI structure: %d",
-                            i, gcry_err);
-          goto cleanup_signerInfos;
-        }
-
-      /*
-       * Use msg->signer_count to track fully populated signerInfos so we know
-       * how many we need to clean up.
-       */
-      msg->signer_count++;
-    }
-
-  /*
-   * Final consistency check of signerInfo.*.digestAlgorithm vs digestAlgorithms
-   * .*.algorithm. An algorithm must be present in both digestAlgorithms and
-   * signerInfo or in neither. We have already checked for an algorithm in
-   * signerInfo that is not in digestAlgorithms, here we check for algorithms in
-   * digestAlgorithms but not in signerInfos.
-   */
-  if (sha512_in_da == true && sha512_in_si == false)
-    {
-      err = grub_error (GRUB_ERR_BAD_SIGNATURE,
-                        "SHA-512 specified in DigestAlgorithms but did not appear in SignerInfos");
-      goto cleanup_signerInfos;
-    }
-
-  if (sha256_in_da == true && sha256_in_si == false)
-    {
-      err = grub_error (GRUB_ERR_BAD_SIGNATURE,
-                        "SHA-256 specified in DigestAlgorithms but did not appear in SignerInfos");
-      goto cleanup_signerInfos;
-    }
-
-  asn1_delete_structure (&signed_part);
-
-  return GRUB_ERR_NONE;
-
- cleanup_signerInfos:
-  for (i = 0; i < msg->signer_count; i++)
-    _gcry_mpi_release (msg->signers[i].sig_mpi);
-
-  grub_free (msg->signers);
-
- cleanup_signed_part:
-  asn1_delete_structure (&signed_part);
-
-  return err;
+  return ret;
 }
 
+/* Parse a single DER formatted PKCS#7 detached signature. */
 grub_err_t
-grub_pkcs7_data_parse (const void *sigbuf, grub_size_t data_size, grub_pkcs7_data_t *msg)
+grub_pkcs7_signed_data_parse_der (const void *der_data, grub_int32_t der_data_len,
+                                  grub_pkcs7_signed_data_t *pkcs7_signed_data)
 {
-  grub_int32_t res;
-  asn1_node content_info;
-  grub_err_t err = GRUB_ERR_NONE;
-  char content_oid[GRUB_MAX_OID_LEN];
-  grub_uint8_t *content;
-  grub_int32_t content_size;
-  grub_int32_t content_oid_size = sizeof (content_oid);
-  grub_int32_t size = (grub_int32_t) data_size;
+  grub_int32_t rc;
+  grub_err_t ret = GRUB_ERR_NONE;
+  asn1_node cms_content_asn1;
+  char content_type_oid[GRUB_MAX_OID_LEN];
+  grub_uint8_t *cms_content;
+  grub_int32_t cms_content_len;
+  grub_int32_t content_type_oid_size = sizeof (content_type_oid);
 
-  if (data_size > GRUB_UINT_MAX)
+  if (der_data == NULL || der_data_len == 0 || pkcs7_signed_data == NULL)
+    return grub_error (GRUB_ERR_BAD_ARGUMENT, "bad input data");
+
+  if (der_data_len > GRUB_UINT_MAX)
     return grub_error (GRUB_ERR_OUT_OF_RANGE,
                        "cannot parse a PKCS#7 message where data size > GRUB_UINT_MAX");
 
-  res = asn1_create_element (grub_gnutls_pkix_asn, "PKIX1.pkcs-7-ContentInfo", &content_info);
-  if (res != ASN1_SUCCESS)
+  rc = asn1_create_element (grub_gnutls_pkix_asn, "PKIX1.pkcs-7-ContentInfo", &cms_content_asn1);
+  if (rc != ASN1_SUCCESS)
     return grub_error (GRUB_ERR_OUT_OF_MEMORY,
                        "could not create ASN.1 structure for PKCS#7 data: %s",
-                       asn1_strerror (res));
+                       asn1_strerror (rc));
 
-  res = asn1_der_decoding2 (&content_info, sigbuf, &size,
-                            ASN1_DECODE_FLAG_STRICT_DER | ASN1_DECODE_FLAG_ALLOW_PADDING,
-                            asn1_error);
-  if (res != ASN1_SUCCESS)
+  rc = asn1_der_decoding2 (&cms_content_asn1, der_data, &der_data_len,
+                           ASN1_DECODE_FLAG_STRICT_DER | ASN1_DECODE_FLAG_ALLOW_PADDING,
+                           asn1_error);
+  if (rc != ASN1_SUCCESS)
     {
-      err = grub_error (GRUB_ERR_BAD_SIGNATURE,
+      ret = grub_error (GRUB_ERR_BAD_FILE_TYPE,
                         "error decoding PKCS#7 message DER: %s", asn1_error);
-      goto cleanup;
+      goto exit;
     }
 
   /*
@@ -407,36 +347,52 @@ grub_pkcs7_data_parse (const void *sigbuf, grub_size_t data_size, grub_pkcs7_dat
    *
    * ContentType ::= OBJECT IDENTIFIER
    */
-  res = asn1_read_value (content_info, "contentType", content_oid, &content_oid_size);
-  if (res != ASN1_SUCCESS)
+  rc = asn1_read_value (cms_content_asn1, "contentType", content_type_oid, &content_type_oid_size);
+  if (rc != ASN1_SUCCESS)
     {
-      err = grub_error (GRUB_ERR_BAD_SIGNATURE, "error reading PKCS#7 content type: %s",
-                        asn1_strerror (res));
-      goto cleanup;
+      ret = grub_error (GRUB_ERR_READ_ERROR, "error reading PKCS#7 content type: %s",
+                        asn1_strerror (rc));
+      goto exit;
     }
 
   /* OID for SignedData defined in 5.1. */
-  if (grub_strncmp (signedData_oid, content_oid, content_oid_size) != 0)
+  if (grub_strncmp (signed_data_oid, content_type_oid, content_type_oid_size) != 0)
     {
-      err = grub_error (GRUB_ERR_BAD_SIGNATURE,
-                        "unexpected content type in PKCS#7 message: OID %s", content_oid);
-      goto cleanup;
+      ret = grub_error (GRUB_ERR_BAD_FILE_TYPE,
+                        "unexpected content type in PKCS#7 message: OID %s", content_type_oid);
+      goto exit;
     }
 
-  content = grub_asn1_allocate_and_read (content_info, "content", "PKCS#7 message content", &content_size);
-  if (content == NULL)
+  cms_content = grub_asn1_allocate_and_read (cms_content_asn1, "content", "PKCS#7 message content", &cms_content_len);
+  if (cms_content == NULL)
     {
-      err = grub_errno;
-      goto cleanup;
+      ret = grub_errno;
+      goto exit;
     }
 
-  err = process_content (content, content_size, msg);
-  grub_free (content);
+  grub_memset (pkcs7_signed_data, 0x00, sizeof (grub_pkcs7_signed_data_t));
+  ret = pkcs7_parse_signed_data (cms_content, cms_content_len, pkcs7_signed_data);
+  grub_free (cms_content);
 
- cleanup:
-  asn1_delete_structure (&content_info);
+ exit:
+  asn1_delete_structure (&cms_content_asn1);
 
-  return err;
+  return ret;
+}
+
+static void
+pkcs7_free_signers (grub_pkcs7_signer_t *signers)
+{
+  grub_pkcs7_signer_t *prev_signer;
+
+  while (signers != NULL)
+    {
+      grub_memset (&signers->digest_algo, 0x00, sizeof (grub_mdalgo_t));
+      _gcry_mpi_release (signers->signature);
+      prev_signer = signers;
+      signers = signers->next;
+      grub_free (prev_signer);
+    }
 }
 
 /*
@@ -444,12 +400,20 @@ grub_pkcs7_data_parse (const void *sigbuf, grub_size_t data_size, grub_pkcs7_dat
  * dynamically allocated the message, it must free it.
  */
 void
-grub_pkcs7_data_release (grub_pkcs7_data_t *msg)
+grub_pkcs7_signed_data_release (grub_pkcs7_signed_data_t *pkcs7_signed_data)
 {
-  grub_int32_t i;
+  if (pkcs7_signed_data == NULL)
+    return;
 
-  for (i = 0; i < msg->signer_count; i++)
-    _gcry_mpi_release (msg->signers[i].sig_mpi);
+  pkcs7_signed_data->version = 0;
+  grub_memset (&pkcs7_signed_data->digest_algo, 0x00, sizeof (grub_mdalgo_t));
+  pkcs7_free_signers (pkcs7_signed_data->signers);
+  grub_memset (pkcs7_signed_data, 0x00, sizeof (grub_pkcs7_signed_data_t));
+}
 
-  grub_free (msg->signers);
+/* Release the alloacted memory. */
+void
+grub_pkcs7_signed_data_free (grub_pkcs7_signed_data_t *pkcs7_signed_data)
+{
+  grub_free (pkcs7_signed_data);
 }

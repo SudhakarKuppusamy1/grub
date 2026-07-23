@@ -40,6 +40,7 @@
 
 #include "asn1_util.h"
 #include "x509.h"
+#include "pkcs7.h"
 #include "appendedsig.h"
 
 GRUB_MOD_LICENSE ("GPLv3+");
@@ -82,7 +83,7 @@ struct module_signature
 struct appended_signature
 {
   struct module_signature sig_metadata; /* Module signature metadata. */
-  grub_pkcs7_data_t pkcs7;              /* Parsed PKCS#7 data. */
+  grub_pkcs7_signed_data_t pkcs7;       /* Parsed PKCS#7 data. */
   grub_size_t signature_len;            /* Length of PKCS#7 data + metadata + magic. */
 };
 typedef struct appended_signature sb_appendedsig_t;
@@ -716,7 +717,7 @@ extract_appended_signature (const grub_uint8_t *buf, grub_size_t bufsize,
   /* Rewind pointer and parse appended pkcs7 data. */
   signed_data -= appendedsig_pkcs7_size;
 
-  return grub_pkcs7_data_parse (signed_data, appendedsig_pkcs7_size, &sig->pkcs7);
+  return grub_pkcs7_signed_data_parse_der (signed_data, appendedsig_pkcs7_size, &sig->pkcs7);
 }
 
 static grub_err_t
@@ -840,7 +841,8 @@ grub_verify_appended_signature (const grub_uint8_t *buf, grub_size_t bufsize)
   grub_x509_cert_t *pk;
   sb_appendedsig_t sig;
   grub_pkcs7_signer_t *si;
-  grub_int32_t i;
+  grub_mdalgo_t *digest_algo;
+  grub_int32_t i = 0;
 
   if (!db.cert_entries && !db.hash_entries)
     return grub_error (GRUB_ERR_BAD_SIGNATURE, "no trusted keys to verify against");
@@ -861,31 +863,31 @@ grub_verify_appended_signature (const grub_uint8_t *buf, grub_size_t bufsize)
       err = verify_binary_hash (buf, datasize);
       if (err == GRUB_ERR_BAD_SIGNATURE)
         {
-          grub_pkcs7_data_release (&sig.pkcs7);
+          grub_pkcs7_signed_data_release (&sig.pkcs7);
           return grub_error (err,
                              "failed to verify the binary hash against a trusted binary hash");
         }
     }
 
   /* Verify signature using trusted keys from db list. */
-  for (i = 0; i < sig.pkcs7.signer_count; i++)
+  for (si = sig.pkcs7.signers; si != NULL; si = si->next)
     {
-      si = &sig.pkcs7.signers[i];
-      context = grub_zalloc (si->hash->contextsize);
+      digest_algo = &si->digest_algo;
+      context = grub_zalloc (digest_algo->hash->contextsize);
       if (context == NULL)
         return grub_errno;
 
-      si->hash->init (context, 0);
-      si->hash->write (context, buf, datasize);
-      si->hash->final (context);
-      hash = si->hash->read (context);
+      digest_algo->hash->init (context, 0);
+      digest_algo->hash->write (context, buf, datasize);
+      digest_algo->hash->final (context);
+      hash = digest_algo->hash->read (context);
 
       grub_dprintf ("appendedsig", "data size %" PRIuGRUB_SIZE ", signer %d hash %02x%02x%02x%02x...\n",
                     datasize, i, hash[0], hash[1], hash[2], hash[3]);
 
       for (pk = db.certs; pk != NULL; pk = pk->next)
         {
-          err = verify_signature (pk->spki.pk, si->sig_mpi, si->hash, hash);
+          err = verify_signature (pk->spki.pk, si->signature, digest_algo->hash, hash);
           if (err == GRUB_ERR_NONE)
             {
               grub_dprintf ("appendedsig", "verify signer %d with key '%s' succeeded\n",
@@ -896,13 +898,13 @@ grub_verify_appended_signature (const grub_uint8_t *buf, grub_size_t bufsize)
           grub_dprintf ("appendedsig", "verify signer %d with key '%s' failed\n",
                         i, pk->subject);
         }
-
+      i++;
       grub_free (context);
       if (err == GRUB_ERR_NONE)
         break;
     }
 
-  grub_pkcs7_data_release (&sig.pkcs7);
+  grub_pkcs7_signed_data_release (&sig.pkcs7);
 
   if (err != GRUB_ERR_NONE)
     return grub_error (err, "failed to verify signature against a trusted key");

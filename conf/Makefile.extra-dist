@@ -86,6 +86,7 @@ EXTRA_DIST += grub-core/commands/tpm2_key_protector/tpm2key.asn
 EXTRA_DIST += grub-core/commands/appendedsig/appendedsig.h
 EXTRA_DIST += grub-core/commands/appendedsig/asn1_util.h
 EXTRA_DIST += grub-core/commands/appendedsig/x509.h
+EXTRA_DIST += grub-core/commands/appendedsig/pkcs7.h
 
 EXTRA_DIST += grub-core/lib/LzmaDec.c
 
