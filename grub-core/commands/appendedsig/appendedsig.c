@@ -40,6 +40,7 @@
 
 #include "asn1_util.h"
 #include "x509.h"
+#include "pkcs7.h"
 #include "appendedsig.h"
 
 GRUB_MOD_LICENSE ("GPLv3+");
@@ -77,7 +78,7 @@ struct module_signature
 struct appended_signature
 {
   struct module_signature sig_metadata; /* Module signature metadata. */
-  grub_pkcs7_data_t pkcs7;              /* Parsed PKCS#7 data. */
+  grub_pkcs7_signed_data_t pkcs7;       /* Parsed PKCS#7 data. */
   grub_size_t signature_len;            /* Length of PKCS#7 data + metadata + magic. */
 };
 typedef struct appended_signature sb_appendedsig_t;
@@ -652,7 +653,7 @@ extract_appended_signature (const grub_uint8_t *buf, grub_size_t bufsize,
   /* Rewind pointer and parse appended pkcs7 data. */
   signed_data -= appendedsig_pkcs7_size;
 
-  return grub_pkcs7_data_parse (signed_data, appendedsig_pkcs7_size, &sig->pkcs7);
+  return grub_pkcs7_spec->parse_der (signed_data, appendedsig_pkcs7_size, &sig->pkcs7);
 }
 
 static grub_err_t
@@ -737,8 +738,9 @@ verify_binary_hash (const grub_uint8_t *data, const grub_size_t data_size)
  * S-expressions (sexp) and perform the signature verification.
  */
 static grub_err_t
-verify_signature (const grub_x509_cert_t *pk, const gcry_mpi_t hmpi,
-                  const gcry_md_spec_t *hash, const grub_uint8_t *hval)
+verify_signature (const grub_x509_cert_t *pk, const grub_uint8_t *signature,
+                  const grub_int32_t sig_len, const gcry_md_spec_t *hash,
+                  const grub_uint8_t *hval)
 {
   grub_err_t ret = GRUB_ERR_BAD_SIGNATURE;
   gcry_sexp_t hsexp = NULL, pubkey = NULL, sig = NULL;
@@ -752,8 +754,8 @@ verify_signature (const grub_x509_cert_t *pk, const gcry_mpi_t hmpi,
                         pk->spki.pk.modulus, pk->spki.pk.exponent) != GPG_ERR_NO_ERROR)
     goto exit;
 
-  if (_gcry_sexp_build (&sig, &errof, "(sig-val (%s (s %M)))", pk->spki.pk_algo.aliases,
-                        hmpi) != GPG_ERR_NO_ERROR)
+  if (_gcry_sexp_build (&sig, &errof, "(sig-val (%s (s %b)))", pk->spki.pk_algo.aliases,
+                        sig_len, signature) != GPG_ERR_NO_ERROR)
     goto exit;
 
   if (grub_crypto_pk_rsa->verify (sig, hsexp, pubkey) == GPG_ERR_NO_ERROR)
@@ -777,7 +779,8 @@ grub_verify_appended_signature (const grub_uint8_t *buf, grub_size_t bufsize)
   grub_x509_cert_t *pk;
   sb_appendedsig_t sig;
   grub_pkcs7_signer_t *si;
-  grub_int32_t i;
+  grub_pkcs7_mdalgo_t *md_algo;
+  grub_int32_t i = 0;
   bool found_in_dbx = false;
 
   if (!db.cert_entries && !db.hash_entries)
@@ -800,31 +803,31 @@ grub_verify_appended_signature (const grub_uint8_t *buf, grub_size_t bufsize)
       err = verify_binary_hash (buf, datasize);
       if (err == GRUB_ERR_BAD_SIGNATURE)
         {
-          grub_pkcs7_data_release (&sig.pkcs7);
+          grub_pkcs7_spec->release (&sig.pkcs7);
           return grub_error (err,
                              "failed to verify the binary hash against a trusted binary hash");
         }
     }
 
   /* Verify signature using trusted keys from db list. */
-  for (i = 0; i < sig.pkcs7.signer_count; i++)
+  for (si = sig.pkcs7.signers; si != NULL; si = si->next, i++)
     {
-      si = &sig.pkcs7.signers[i];
-      context = grub_zalloc (si->hash->contextsize);
+      md_algo = &si->md_algo;
+      context = grub_zalloc (md_algo->hash->contextsize + 1);
       if (context == NULL)
         return grub_errno;
 
-      si->hash->init (context, 0);
-      si->hash->write (context, buf, datasize);
-      si->hash->final (context);
-      hash = si->hash->read (context);
+      md_algo->hash->init (context, 0);
+      md_algo->hash->write (context, buf, datasize);
+      md_algo->hash->final (context);
+      hash = md_algo->hash->read (context);
 
       grub_dprintf ("appendedsig", "data size %" PRIuGRUB_SIZE ", signer %d hash %02x%02x%02x%02x...\n",
                     datasize, i, hash[0], hash[1], hash[2], hash[3]);
 
       for (pk = db.certs; pk != NULL; pk = pk->next)
         {
-          ret = verify_signature (pk, si->sig_mpi, si->hash, hash);
+          ret = verify_signature (pk, si->sig, si->sig_len, md_algo->hash, hash);
           if (ret == GRUB_ERR_NONE)
             {
               if (append_key_mgmt == true && check_aginst_dbx (pk, NULL, 0, false) == true)
@@ -849,7 +852,7 @@ grub_verify_appended_signature (const grub_uint8_t *buf, grub_size_t bufsize)
         break;
     }
 
-  grub_pkcs7_data_release (&sig.pkcs7);
+  grub_pkcs7_spec->release (&sig.pkcs7);
 
   if (ret == GRUB_ERR_NONE ||
       ((ret != GRUB_ERR_NONE && found_in_dbx == false) && err == GRUB_ERR_NONE))
