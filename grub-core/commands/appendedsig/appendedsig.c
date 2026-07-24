@@ -45,66 +45,16 @@
 
 GRUB_MOD_LICENSE ("GPLv3+");
 
-/* Public key type. */
-#define PKEY_ID_PKCS7      2
-
-/* Appended signature magic string and size. */
-#define SIG_MAGIC          "~Module signature appended~\n"
-#define SIG_MAGIC_SIZE     ((sizeof(SIG_MAGIC) - 1))
-
-#define OPTION_BINARY_HASH 0
-#define OPTION_CERT_HASH   1
-
-/*
- * This structure is extracted from scripts/sign-file.c in the linux kernel
- * source. It was licensed as LGPLv2.1+, which is GPLv3+ compatible.
- */
-struct module_signature
-{
-  grub_uint8_t algo;       /* Public-key crypto algorithm [0]. */
-  grub_uint8_t hash;       /* Digest algorithm [0]. */
-  grub_uint8_t id_type;    /* Key identifier type [PKEY_ID_PKCS7]. */
-  grub_uint8_t signer_len; /* Length of signer's name [0]. */
-  grub_uint8_t key_id_len; /* Length of key identifier [0]. */
-  grub_uint8_t __pad[3];
-  grub_uint32_t sig_len;   /* Length of signature data. */
-} GRUB_PACKED;
-
-#define SIG_METADATA_SIZE  (sizeof (struct module_signature))
-#define APPENDED_SIG_SIZE(pkcs7_data_size) \
-                           (pkcs7_data_size + SIG_MAGIC_SIZE + SIG_METADATA_SIZE)
-
-/* This represents an entire, parsed, appended signature. */
-struct appended_signature
-{
-  struct module_signature sig_metadata; /* Module signature metadata. */
-  grub_pkcs7_signed_data_t pkcs7;       /* Parsed PKCS#7 data. */
-  grub_size_t signature_len;            /* Length of PKCS#7 data + metadata + magic. */
-};
-typedef struct appended_signature sb_appendedsig_t;
-
-/* This represents a trusted certificates. */
-struct sb_database
-{
-  grub_x509_cert_t *certs;    /* Certificates. */
-  grub_uint32_t cert_entries; /* Number of certificates. */
-  grub_uint8_t **hashes;      /* Certificate/binary hashes. */
-  grub_size_t *hash_sizes;    /* Sizes of certificate/binary hashes. */
-  grub_uint32_t hash_entries; /* Number of certificate/binary hashes. */
-  bool is_db;                 /* Flag to indicate the db/dbx list. */
-};
-typedef struct sb_database sb_database_t;
-
 /* The db list is used to validate appended signatures. */
-static sb_database_t db = {.certs = NULL, .cert_entries = 0, .hashes = NULL,
-                           .hash_sizes = NULL, .hash_entries = 0, .is_db = true};
+static grub_append_sd_t db = {.certs = NULL, .no_of_certs = 0, .hashes = NULL,
+                              .no_of_hashes = 0, .is_db = true};
 /*
  * The dbx list is used to ensure that the distrusted certificates or GRUB
  * modules/kernel binaries are rejected during appended signatures/hashes
  * validation.
  */
-static sb_database_t dbx = {.certs = NULL, .cert_entries = 0, .hashes = NULL,
-                            .hash_sizes = NULL, .hash_entries = 0, .is_db = false};
+static grub_append_sd_t dbx = {.certs = NULL, .no_of_certs = 0, .hashes = NULL,
+                               .no_of_hashes = 0, .is_db = false};
 
 /*
  * Signature verification flag (check_sigs).
@@ -237,19 +187,14 @@ get_hash (const grub_packed_guid_t *guid, const grub_uint8_t *data, const grub_s
 /* Check the hash presence in the db/dbx list. */
 static bool
 check_hash_presence (const grub_uint8_t *const hash, const grub_size_t hash_size,
-                     const sb_database_t *sb_database)
+                     const grub_append_sd_t *sd)
 {
-  grub_uint32_t i;
+  grub_hash_t *curr_hash;
 
-  for (i = 0; i < sb_database->hash_entries; i++)
-    {
-      if (sb_database->hashes[i] == NULL)
-        continue;
-
-      if (hash_size == sb_database->hash_sizes[i] &&
-          grub_memcmp (sb_database->hashes[i], hash, hash_size) == 0)
-        return true;
-    }
+  for (curr_hash = sd->hashes; curr_hash != NULL; curr_hash = curr_hash->next)
+    if (hash_size == curr_hash->hash_size &&
+        grub_memcmp (curr_hash->hash, hash, hash_size) == 0)
+      return true;
 
   return false;
 }
@@ -299,11 +244,11 @@ is_cert_match (const grub_x509_cert_t *cert1, const grub_x509_cert_t *cert2)
 
 /* Check the certificate presence in the db/dbx list. */
 static bool
-check_cert_presence (const grub_x509_cert_t *cert_in, const sb_database_t *sb_database)
+check_cert_presence (const grub_x509_cert_t *cert_in, const grub_append_sd_t *sd)
 {
   grub_x509_cert_t *cert;
 
-  for (cert = sb_database->certs; cert != NULL; cert = cert->next)
+  for (cert = sd->certs; cert != NULL; cert = cert->next)
     if (is_cert_match (cert, cert_in) == true)
       return true;
 
@@ -347,15 +292,18 @@ check_aginst_dbx (const grub_x509_cert_t *key, grub_uint8_t const *hash,
 /* Add the certificate/binary hash into the db/dbx list. */
 static grub_err_t
 add_hash (grub_uint8_t *const data, const grub_size_t data_size, const bool is_pks,
-          sb_database_t *sb_database)
+          grub_append_sd_t *sd)
 {
-  grub_uint8_t **hashes;
-  grub_size_t *hash_sizes;
+  grub_hash_t *new_hash;
 
   if (data == NULL || data_size == 0)
-    return grub_error (GRUB_ERR_OUT_OF_RANGE, "certificate/binary-hash data or size is not available");
+    return grub_error (GRUB_ERR_BAD_ARGUMENT, "certificate/binary-hash data or size is not available");
 
-  if (sb_database->is_db == true && is_pks == false)
+  if (data_size != SHA256_HASH_SIZE && data_size != SHA384_HASH_SIZE &&
+      data_size != SHA512_HASH_SIZE)
+    return grub_error (GRUB_ERR_OUT_OF_RANGE, "unsupported hash size: %zu", data_size);
+
+  if (sd->is_db == true && is_pks == false)
     {
       if (check_aginst_dbx (NULL, data, data_size, true) == true)
         {
@@ -366,43 +314,35 @@ add_hash (grub_uint8_t *const data, const grub_size_t data_size, const bool is_p
         }
     }
 
-  if (check_hash_presence (data, data_size, sb_database) == true)
+  if (check_hash_presence (data, data_size, sd) == true)
     {
       grub_dprintf ("appendedsig",
                     "cannot add a hash (%02x%02x%02x%02x), as it is present in the %s list\n",
-                    data[0], data[1], data[2], data[3], ((sb_database->is_db == true) ? "db" : "dbx"));
+                    data[0], data[1], data[2], data[3], ((sd->is_db == true) ? "db" : "dbx"));
       return GRUB_ERR_EXISTS;
     }
 
-  hashes = grub_realloc (sb_database->hashes, sizeof (grub_uint8_t *) * (sb_database->hash_entries + 1));
-  if (hashes == NULL)
-    return grub_error (GRUB_ERR_OUT_OF_MEMORY, "out of memory");
-
-  hash_sizes = grub_realloc (sb_database->hash_sizes, sizeof (grub_size_t) * (sb_database->hash_entries + 1));
-  if (hash_sizes == NULL)
-    {
-      /* Allocated memory will be freed by free_db_list()/free_dbx_list(). */
-      hashes[sb_database->hash_entries] = NULL;
-      sb_database->hashes = hashes;
-      sb_database->hash_entries++;
-
-      return grub_error (GRUB_ERR_OUT_OF_MEMORY, "out of memory");
-    }
-
-  hashes[sb_database->hash_entries] = grub_malloc (data_size);
-  if (hashes[sb_database->hash_entries] == NULL)
+  new_hash = grub_zalloc (sizeof (grub_hash_t));
+  if (new_hash == NULL)
     return grub_error (GRUB_ERR_OUT_OF_MEMORY, "out of memory");
 
   grub_dprintf ("appendedsig",
                 "added the hash %02x%02x%02x%02x... with size of %" PRIuGRUB_SIZE " to the %s list\n",
                 data[0], data[1], data[2], data[3], data_size,
-                ((sb_database->is_db == true) ? "db" : "dbx"));
+                ((sd->is_db == true) ? "db" : "dbx"));
 
-  grub_memcpy (hashes[sb_database->hash_entries], data, data_size);
-  hash_sizes[sb_database->hash_entries] = data_size;
-  sb_database->hash_sizes = hash_sizes;
-  sb_database->hashes = hashes;
-  sb_database->hash_entries++;
+  new_hash->hash = grub_zalloc (data_size + 1);
+  if (new_hash->hash == NULL)
+    {
+      grub_free (new_hash);
+      return grub_error (GRUB_ERR_OUT_OF_MEMORY, "out of memory");
+    }
+
+  grub_memcpy (new_hash->hash, data, data_size);
+  new_hash->hash_size = data_size;
+  new_hash->next = (sd->hashes != NULL ? sd->hashes : NULL);
+  sd->hashes = new_hash;
+  sd->no_of_hashes++;
 
   return GRUB_ERR_NONE;
 }
@@ -443,13 +383,13 @@ is_x509 (const grub_packed_guid_t *guid)
  */
 static grub_err_t
 add_certificate (const grub_uint8_t *data, const grub_size_t data_size,
-                 const bool is_pks, sb_database_t *sb_database)
+                 const bool is_pks, grub_append_sd_t *sd)
 {
   grub_err_t rc;
   grub_x509_cert_t *cert;
 
   if (data == NULL || data_size == 0)
-    return grub_error (GRUB_ERR_OUT_OF_RANGE, "certificate data or size is not available");
+    return grub_error (GRUB_ERR_BAD_ARGUMENT, "certificate data or size is not available");
 
   cert = grub_zalloc (sizeof (grub_x509_cert_t));
   if (cert == NULL)
@@ -459,7 +399,7 @@ add_certificate (const grub_uint8_t *data, const grub_size_t data_size,
   if (rc != GRUB_ERR_NONE)
     {
       grub_dprintf ("appendedsig", "cannot add a certificate CN='%s' to the %s list\n",
-                    cert->subject, (sb_database->is_db == true) ? "db" : "dbx");
+                    cert->subject, (sd->is_db == true) ? "db" : "dbx");
       grub_x509_spec->free (cert);
       return rc;
     }
@@ -470,7 +410,7 @@ add_certificate (const grub_uint8_t *data, const grub_size_t data_size,
    */
   if (append_key_mgmt == true)
     {
-      if (sb_database->is_db == true && is_pks == false)
+      if (sd->is_db == true && is_pks == false)
         {
           if (check_aginst_dbx (cert, NULL, 0, false) == true)
             {
@@ -483,21 +423,21 @@ add_certificate (const grub_uint8_t *data, const grub_size_t data_size,
         }
     }
 
-  if (check_cert_presence (cert, sb_database) == true)
+  if (check_cert_presence (cert, sd) == true)
     {
       grub_dprintf ("appendedsig",
                     "cannot add a certificate CN='%s', as it is present in the %s list",
-                    cert->subject, ((sb_database->is_db == true) ? "db" : "dbx"));
+                    cert->subject, ((sd->is_db == true) ? "db" : "dbx"));
       rc = GRUB_ERR_EXISTS;
       goto fail;
     }
 
   grub_dprintf ("appendedsig", "added a certificate CN='%s' to the %s list\n",
-                cert->subject, ((sb_database->is_db == true) ? "db" : "dbx"));
+                cert->subject, ((sd->is_db == true) ? "db" : "dbx"));
 
-  cert->next = sb_database->certs;
-  sb_database->certs = cert;
-  sb_database->cert_entries++;
+  cert->next = sd->certs;
+  sd->certs = cert;
+  sd->no_of_certs++;
 
   return rc;
 
@@ -529,7 +469,7 @@ _remove_cert_from_db (const grub_x509_cert_t *cert)
           curr_cert->next = NULL;
           grub_x509_spec->release (curr_cert);
           grub_x509_spec->free (curr_cert);
-          db.cert_entries--;
+          db.no_of_certs--;
           break;
         }
       else
@@ -582,7 +522,7 @@ file_read_whole (grub_file_t file, grub_uint8_t **buf, grub_size_t *len)
                        full_file_size);
 
   file_size = (grub_size_t) full_file_size;
-  *buf = grub_malloc (file_size);
+  *buf = grub_zalloc (file_size + 1);
   if (*buf == NULL)
     return grub_error (GRUB_ERR_OUT_OF_MEMORY,
                        "could not allocate file data buffer size %" PRIuGRUB_SIZE,
@@ -615,7 +555,7 @@ file_read_whole (grub_file_t file, grub_uint8_t **buf, grub_size_t *len)
 
 static grub_err_t
 extract_appended_signature (const grub_uint8_t *buf, grub_size_t bufsize,
-                            sb_appendedsig_t *sig)
+                            grub_append_sig_t *sig)
 {
   grub_size_t appendedsig_pkcs7_size;
   grub_size_t signed_data_size = bufsize;
@@ -690,21 +630,18 @@ static grub_err_t
 verify_binary_hash (const grub_uint8_t *data, const grub_size_t data_size)
 {
   grub_err_t rc = GRUB_ERR_NONE;
-  grub_uint32_t i;
   grub_size_t hash_size = 0;
   grub_uint8_t hash[GRUB_MAX_HASH_LEN] = { 0 };
+  grub_hash_t *curr_hash;
 
-  for (i = 0; i < dbx.hash_entries; i++)
+  for (curr_hash = dbx.hashes; curr_hash != NULL; curr_hash = curr_hash->next)
     {
-      if (dbx.hashes[i] == NULL)
-        continue;
-
-      rc = get_binary_hash (dbx.hash_sizes[i], data, data_size, hash, &hash_size);
+      rc = get_binary_hash (curr_hash->hash_size, data, data_size, hash, &hash_size);
       if (rc != GRUB_ERR_NONE)
         continue;
 
-      if (hash_size == dbx.hash_sizes[i] &&
-          grub_memcmp (dbx.hashes[i], hash, hash_size) == 0)
+      if (hash_size == curr_hash->hash_size &&
+          grub_memcmp (curr_hash->hash, hash, hash_size) == 0)
         {
           grub_dprintf ("appendedsig", "the hash (%02x%02x%02x%02x) is present in the dbx list\n",
                         hash[0], hash[1], hash[2], hash[3]);
@@ -712,17 +649,14 @@ verify_binary_hash (const grub_uint8_t *data, const grub_size_t data_size)
         }
     }
 
-  for (i = 0; i < db.hash_entries; i++)
+  for (curr_hash = db.hashes; curr_hash != NULL; curr_hash = curr_hash->next)
     {
-      if (db.hashes[i] == NULL)
-        continue;
-
-      rc = get_binary_hash (db.hash_sizes[i], data, data_size, hash, &hash_size);
+      rc = get_binary_hash (curr_hash->hash_size, data, data_size, hash, &hash_size);
       if (rc != GRUB_ERR_NONE)
         continue;
 
-      if (hash_size == db.hash_sizes[i] &&
-          grub_memcmp (db.hashes[i], hash, hash_size) == 0)
+      if (hash_size == curr_hash->hash_size &&
+          grub_memcmp (curr_hash->hash, hash, hash_size) == 0)
         {
           grub_dprintf ("appendedsig", "verified with a trusted hash (%02x%02x%02x%02x)\n",
                         hash[0], hash[1], hash[2], hash[3]);
@@ -777,14 +711,15 @@ grub_verify_appended_signature (const grub_uint8_t *buf, grub_size_t bufsize)
   void *context;
   grub_uint8_t *hash;
   grub_x509_cert_t *pk;
-  sb_appendedsig_t sig;
+  grub_append_sig_t sig;
   grub_pkcs7_signer_t *si;
   grub_pkcs7_mdalgo_t *md_algo;
   grub_int32_t i = 0;
   bool found_in_dbx = false;
 
-  if (!db.cert_entries && !db.hash_entries)
-    return grub_error (GRUB_ERR_BAD_SIGNATURE, "no trusted keys to verify against");
+  if (!db.no_of_certs && !db.no_of_hashes)
+    return grub_error (GRUB_ERR_BAD_SIGNATURE, "no trusted keys%s to verify against",
+                       (append_key_mgmt == true ? "/hashes" : ""));
 
   ret = extract_appended_signature (buf, bufsize, &sig);
   if (ret != GRUB_ERR_NONE)
@@ -1025,7 +960,8 @@ grub_cmd_list_db (grub_command_t cmd __attribute__ ((unused)), int argc __attrib
                   char **args __attribute__ ((unused)))
 {
   grub_x509_cert_t *cert;
-  grub_uint32_t i, cert_num = 1;
+  grub_hash_t *curr_hash;
+  grub_uint32_t i = 0, cert_num = 1;
 
   for (cert = db.certs; cert != NULL; cert = cert->next, cert_num++)
     print_certificate (cert, cert_num);
@@ -1033,14 +969,12 @@ grub_cmd_list_db (grub_command_t cmd __attribute__ ((unused)), int argc __attrib
   if (append_key_mgmt == false)
     return GRUB_ERR_NONE;
 
-  for (i = 0; i < db.hash_entries; i++)
+  for (curr_hash = db.hashes; curr_hash != NULL; curr_hash = curr_hash->next)
     {
-      if (db.hashes[i] != NULL)
-        {
-          grub_printf ("\nBinary hash: %u\n", i + 1);
-          grub_printf ("    Hash: sha%" PRIuGRUB_SIZE "\n         ", db.hash_sizes[i] * 8);
-          hexdump_colon (db.hashes[i], db.hash_sizes[i]);
-        }
+      grub_printf ("\nBinary hash: %u\n", i + 1);
+      grub_printf ("    Hash: sha%" PRIuGRUB_SIZE "\n         ", curr_hash->hash_size * 8);
+      hexdump_colon (curr_hash->hash, curr_hash->hash_size);
+      i++;
     }
 
   return GRUB_ERR_NONE;
@@ -1051,7 +985,8 @@ grub_cmd_list_dbx (grub_command_t cmd __attribute__((unused)),
                    int argc __attribute__((unused)), char **args __attribute__((unused)))
 {
   grub_x509_cert_t *cert;
-  grub_uint32_t i, cert_num = 1;
+  grub_hash_t *curr_hash;
+  grub_uint32_t i = 0, cert_num = 1;
 
   if (append_key_mgmt == false)
     return grub_error (GRUB_ERR_ACCESS_DENIED,
@@ -1060,14 +995,13 @@ grub_cmd_list_dbx (grub_command_t cmd __attribute__((unused)),
   for (cert = dbx.certs; cert != NULL; cert = cert->next, cert_num++)
     print_certificate (cert, cert_num);
 
-  for (i = 0; i < dbx.hash_entries; i++)
+  for (curr_hash = dbx.hashes; curr_hash != NULL; curr_hash = curr_hash->next)
     {
-      if (dbx.hashes[i] != NULL)
-        {
-          grub_printf ("\nCertificate/Binary hash: %u\n", i + 1);
-          grub_printf ("    Hash: sha%" PRIuGRUB_SIZE "\n         ", dbx.hash_sizes[i] * 8);
-          hexdump_colon (dbx.hashes[i], dbx.hash_sizes[i]);
-        }
+      grub_printf ("\nCertificate/Binary hash: %u\n", i + 1);
+      grub_printf ("    hash: sha%" PRIuGRUB_SIZE "\n         ",
+                   curr_hash->hash_size * 8);
+      hexdump_colon (curr_hash->hash, curr_hash->hash_size);
+      i++;
     }
 
   return GRUB_ERR_NONE;
@@ -1362,8 +1296,8 @@ create_dbs_from_pks (void)
   grub_pks_free_data ();
   grub_dprintf ("appendedsig", "the db list now has %u keys\n"
                 "the dbx list now has %u keys\n",
-                db.hash_entries + db.cert_entries,
-                dbx.hash_entries + dbx.cert_entries);
+                db.no_of_hashes + db.no_of_certs,
+                dbx.no_of_hashes + dbx.no_of_certs);
 #endif
 }
 
@@ -1372,7 +1306,7 @@ static void
 free_db_list (void)
 {
   grub_x509_cert_t *cert;
-  grub_uint32_t i;
+  grub_hash_t *curr_hash;
 
   while (db.certs != NULL)
     {
@@ -1382,12 +1316,15 @@ free_db_list (void)
       grub_x509_spec->free (cert);
     }
 
-  for (i = 0; i < db.hash_entries; i++)
-    grub_free (db.hashes[i]);
+  while (db.hashes != NULL)
+    {
+      curr_hash = db.hashes;
+      db.hashes = db.hashes->next;
+      grub_free (curr_hash->hash);
+      grub_free (curr_hash);
+    }
 
-  grub_free (db.hashes);
-  grub_free (db.hash_sizes);
-  grub_memset (&db, 0, sizeof (sb_database_t));
+  grub_memset (&db, 0, sizeof (grub_append_sd_t));
 }
 
 /* Free dbx list memory */
@@ -1395,7 +1332,7 @@ static void
 free_dbx_list (void)
 {
   grub_x509_cert_t *cert;
-  grub_uint32_t i;
+  grub_hash_t *curr_hash;
 
   while (dbx.certs != NULL)
     {
@@ -1405,12 +1342,15 @@ free_dbx_list (void)
       grub_x509_spec->free (cert);
     }
 
-  for (i = 0; i < dbx.hash_entries; i++)
-    grub_free (dbx.hashes[i]);
+  while (dbx.hashes != NULL)
+    {
+      curr_hash = dbx.hashes;
+      dbx.hashes = dbx.hashes->next;
+      grub_free (curr_hash->hash);
+      grub_free (curr_hash);
+    }
 
-  grub_free (dbx.hashes);
-  grub_free (dbx.hash_sizes);
-  grub_memset (&dbx, 0, sizeof (sb_database_t));
+  grub_memset (&dbx, 0, sizeof (grub_append_sd_t));
 }
 
 static const char *
@@ -1631,7 +1571,7 @@ GRUB_MOD_INIT (appendedsig)
     {
       load_elf2db ();
       grub_dprintf ("appendedsig", "the db list now has %u static keys\n",
-                    db.cert_entries);
+                    db.no_of_certs);
     }
 
   cmd_verify = grub_register_command ("append_verify", grub_cmd_verify_signature, N_("<SIGNED_FILE>"),
