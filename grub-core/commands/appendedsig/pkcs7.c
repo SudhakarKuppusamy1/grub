@@ -21,6 +21,7 @@
 #include <sys/types.h>
 #include <grub/gcrypt/gcrypt.h>
 
+#include "util.h"
 #include "asn1_util.h"
 #include "pkcs7.h"
 
@@ -29,6 +30,8 @@ static char asn1_error[ASN1_MAX_ERROR_DESCRIPTION_SIZE];
 /* RFC 5652 s 5.1. */
 static const char *signed_data_oid = "1.2.840.113549.1.7.2";
 static const grub_int32_t signed_data_oid_len = 20;
+
+static const char *common_name_oid = "2.5.4.3";
 
 /* RFC 4055 s 2.1. */
 static const grub_mdalgo_t md_algos [] =
@@ -123,6 +126,112 @@ pkcs7_get_digest_algorithms (asn1_node pkcs7_asn1, grub_pkcs7_signed_data_t *pkc
   ret = pkcs7_get_digest_algo (pkcs7_asn1, 0, pkcs7_signed_data);
   if (ret != GRUB_ERR_NONE)
     return ret;
+
+  return GRUB_ERR_NONE;
+}
+
+static grub_err_t
+pkcs7_get_signerinfo_version (asn1_node pkcs7_asn1, grub_int32_t signer_index,
+                              grub_pkcs7_signer_t *signer)
+{
+  grub_int32_t rc;
+  char version;
+  char *version_path;
+  grub_int32_t version_size = sizeof (version);
+
+  version_path = grub_xasprintf ("signerInfos.?%d.version", signer_index + 1);
+  if (version_path == NULL)
+    return grub_error (GRUB_ERR_OUT_OF_MEMORY,
+                       "could not allocate path for signer %d's signer version parsing path",
+                       signer_index);
+
+  rc = asn1_read_value (pkcs7_asn1, version_path, &version, &version_size);
+  grub_free (version_path);
+  if (rc != ASN1_SUCCESS || version_size == 0)
+    return grub_error (GRUB_ERR_BAD_SIGNATURE, "error reading signers version: %s",
+                       ((rc != ASN1_SUCCESS) ? asn1_strerror (rc) : "contains zero bytes"));
+
+  /* Signature version must be 1 because appended signature only support v1. */
+  if (version != 1)
+    return grub_error (GRUB_ERR_BAD_SIGNATURE,
+                       "unexpected signature version v%d, only v1 supported", version);
+
+  signer->version = 1;
+
+  return GRUB_ERR_NONE;
+}
+
+static grub_err_t
+pkcs7_get_signerinfo_issuer_and_serial (asn1_node pkcs7_asn1, grub_int32_t signer_index,
+                                        grub_pkcs7_signer_t *signer)
+{
+  grub_err_t ret;
+  grub_int32_t signer_id_len = 0;
+  grub_int32_t serial_len = 0;
+  grub_uint8_t *serial;
+  char *sid_path;
+  char *serial_path;
+  char *issuer_path;
+  char *signer_id;
+
+  sid_path = grub_xasprintf ("signerInfos.?%d.sid", signer_index + 1);
+  if (sid_path == NULL)
+    return grub_error (GRUB_ERR_OUT_OF_MEMORY,
+                       "could not allocate path for signer %d's signer identifier parsing path",
+                       signer_index);
+
+  signer_id = grub_asn1_allocate_and_read (pkcs7_asn1, sid_path, "signer identifier",
+                                           &signer_id_len);
+  grub_free (sid_path);
+  if (signer_id == NULL)
+    return grub_errno;
+
+  if (grub_strncmp (signer_id, "issuerAndSerialNumber", signer_id_len) == 0)
+    {
+      grub_free (signer_id);
+      issuer_path = grub_xasprintf ("signerInfos.?%d.sid.issuerAndSerialNumber.issuer",
+                                    signer_index + 1);
+      if (issuer_path == NULL)
+        return grub_error (GRUB_ERR_OUT_OF_MEMORY,
+                           "could not allocate path for signer %d's issuer parsing path",
+                           signer_index);
+
+      ret = grub_asn1_read_rnd_sequence (pkcs7_asn1, issuer_path, common_name_oid,
+                                         &signer->issuer, &signer->issuer_len);
+      grub_free (issuer_path);
+      if (ret != GRUB_ERR_NONE)
+        return ret;
+
+      serial_path = grub_xasprintf ("signerInfos.?%d.sid.issuerAndSerialNumber.serialNumber",
+                                    signer_index + 1);
+      if (serial_path == NULL)
+        {
+          grub_free (signer->issuer);
+          return grub_error (GRUB_ERR_OUT_OF_MEMORY,
+                             "could not allocate path for signer %d's serialNumber parsing path",
+                             signer_index);
+	}
+
+      serial = grub_asn1_allocate_and_read (pkcs7_asn1, serial_path, "serial number",
+                                            &serial_len);
+      grub_free (serial_path);
+      if (serial == NULL)
+        {
+          grub_free (signer->issuer);
+          return grub_errno;
+	}
+
+      ret = grub_util_buffer2hex (serial, serial_len, &signer->serial,
+                                  &signer->serial_len);
+      grub_free (serial);
+      if (ret != GRUB_ERR_NONE)
+        {
+          grub_free (signer->issuer);
+          return ret;
+	}
+    }
+  else
+      grub_free (signer_id);
 
   return GRUB_ERR_NONE;
 }
@@ -268,18 +377,26 @@ pkcs7_get_signerinfos (asn1_node pkcs7_asn1, grub_pkcs7_signed_data_t *pkcs7_sig
           break;
         }
 
-      ret = pkcs7_get_signerinfo_digalgo (pkcs7_asn1, i, signer);
+      ret = pkcs7_get_signerinfo_version (pkcs7_asn1, i, signer);
       if (ret == GRUB_ERR_NONE)
         {
-          ret = pkcs7_get_signerinfo_sigalgo (pkcs7_asn1, i, signer);
+          ret = pkcs7_get_signerinfo_issuer_and_serial (pkcs7_asn1, i, signer);
           if (ret == GRUB_ERR_NONE)
             {
-              ret = pkcs7_get_signerinfo_signature (pkcs7_asn1, i, signer);
+              ret = pkcs7_get_signerinfo_digalgo (pkcs7_asn1, i, signer);
               if (ret == GRUB_ERR_NONE)
                 {
-                  signer->next = (signers != NULL ? signers : NULL);
-                  signers = signer;
-                  pkcs7_signed_data->no_of_signers++;
+                  ret = pkcs7_get_signerinfo_sigalgo (pkcs7_asn1, i, signer);
+                  if (ret == GRUB_ERR_NONE)
+                    {
+                      ret = pkcs7_get_signerinfo_signature (pkcs7_asn1, i, signer);
+                      if (ret == GRUB_ERR_NONE)
+                        {
+                          signer->next = (signers != NULL ? signers : NULL);
+                          signers = signer;
+                          pkcs7_signed_data->no_of_signers++;
+                        }
+                    }
                 }
             }
         }
@@ -442,6 +559,8 @@ pkcs7_free_signers (grub_pkcs7_signer_t *signers)
 
   while (signers != NULL)
     {
+      grub_free (signers->serial);
+      grub_free (signers->issuer);
       grub_memset (&signers->digest_algo, 0x00, sizeof (grub_mdalgo_t));
       _gcry_mpi_release (signers->signature);
       prev_signer = signers;
