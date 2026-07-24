@@ -23,6 +23,15 @@
 #include <grub/crypto.h>
 #include "x509.h"
 
+struct sig_algo
+{
+  const char *name;
+  const char *aliases;
+  const char *oid;
+  const grub_int32_t oid_len;
+};
+typedef struct sig_algo grub_pkcs7_sigalgo_t;
+
 struct md_algo
 {
   const char *name;
@@ -36,6 +45,7 @@ typedef struct md_algo grub_pkcs7_mdalgo_t;
 struct pkcs7_signerInfo
 {
   grub_pkcs7_mdalgo_t md_algo;
+  grub_pkcs7_sigalgo_t sig_algo;
   grub_uint8_t *sig;
   grub_uint32_t sig_len;
 

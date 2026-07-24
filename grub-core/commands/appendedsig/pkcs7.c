@@ -37,6 +37,8 @@ static const grub_pkcs7_mdalgo_t md_algos[] =
   {"sha512", "2.16.840.1.101.3.4.2.3", 22, &_gcry_digest_spec_sha512}
 };
 
+static const grub_pkcs7_sigalgo_t sig_algos = {"rsaEncryption", "rsa", "1.2.840.113549.1.1.1", 20};
+
 static void
 pkcs7_free_signers (grub_pkcs7_signer_t *signers);
 
@@ -169,6 +171,44 @@ pkcs7_get_signerinfo_md_algo (asn1_node pkcs7_asn1, grub_int32_t signer_index,
 }
 
 static grub_err_t
+pkcs7_get_signerinfo_sig_algo (asn1_node pkcs7_asn1, grub_int32_t signer_index,
+                               grub_pkcs7_signer_t *signer)
+{
+  grub_int32_t rc;
+  char *sig_algo_path;
+  char algo_oid[GRUB_MAX_OID_LEN];
+  grub_int32_t algo_oid_size = sizeof (algo_oid);
+
+  sig_algo_path = grub_xasprintf ("signerInfos.?%d.signatureAlgorithm.algorithm",
+                                  signer_index + 1);
+  if (sig_algo_path == NULL)
+    return grub_error (GRUB_ERR_OUT_OF_MEMORY,
+                       "could not allocate path for signer %d's signature algorithm parsing path",
+                       signer_index);
+
+  rc = asn1_read_value (pkcs7_asn1, sig_algo_path, algo_oid, &algo_oid_size);
+  if (rc != ASN1_SUCCESS || algo_oid_size == 0)
+    {
+      grub_free (sig_algo_path);
+      return grub_error (GRUB_ERR_BAD_SIGNATURE,
+                         "error reading signer %d's signature algorithm: %s", signer_index,
+                         ((rc != ASN1_SUCCESS) ? asn1_strerror (rc) : "contains zero bytes"));
+    }
+
+  grub_free (sig_algo_path);
+
+  if (sig_algos.oid_len == algo_oid_size - 1 &&
+      grub_strncmp (algo_oid, sig_algos.oid, sig_algos.oid_len) == 0)
+    {
+      grub_memcpy (&signer->sig_algo, &sig_algos, sizeof (sig_algos));
+      return GRUB_ERR_NONE;
+    }
+
+  return grub_error (GRUB_ERR_NOT_IMPLEMENTED_YET,
+                     "only rsaEncryption is supported, found OID %s", algo_oid);
+}
+
+static grub_err_t
 pkcs7_get_signerinfo_signature (asn1_node pkcs7_asn1, grub_int32_t signer_index,
                                 grub_pkcs7_signer_t *signer)
 {
@@ -225,12 +265,16 @@ pkcs7_get_signerinfos (asn1_node pkcs7_asn1, grub_pkcs7_signed_data_t *pkcs7_sig
       ret = pkcs7_get_signerinfo_md_algo (pkcs7_asn1, i, signer);
       if (ret == GRUB_ERR_NONE)
         {
-          ret = pkcs7_get_signerinfo_signature (pkcs7_asn1, i, signer);
+          ret = pkcs7_get_signerinfo_sig_algo (pkcs7_asn1, i, signer);
           if (ret == GRUB_ERR_NONE)
             {
-              signer->next = (signers != NULL ? signers : NULL);
-              signers = signer;
-              pkcs7_signed_data->no_of_signers++;
+              ret = pkcs7_get_signerinfo_signature (pkcs7_asn1, i, signer);
+              if (ret == GRUB_ERR_NONE)
+                {
+                  signer->next = (signers != NULL ? signers : NULL);
+                  signers = signer;
+                  pkcs7_signed_data->no_of_signers++;
+                }
             }
         }
 
@@ -398,6 +442,7 @@ pkcs7_free_signers (grub_pkcs7_signer_t *signers)
   while (signers != NULL)
     {
       grub_memset (&signers->md_algo, 0x00, sizeof (grub_pkcs7_mdalgo_t));
+      grub_memset (&signers->sig_algo, 0x00, sizeof (grub_pkcs7_sigalgo_t));
       grub_free (signers->sig);
       prev_signer = signers;
       signers = signers->next;
