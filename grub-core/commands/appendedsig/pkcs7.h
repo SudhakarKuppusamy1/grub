@@ -44,6 +44,11 @@ typedef struct md_algo grub_pkcs7_mdalgo_t;
 /* A PKCS#7 signed data signer info. */
 struct pkcs7_signerInfo
 {
+  grub_int32_t version;
+  grub_uint8_t *serial;
+  grub_int32_t serial_len;
+  char *issuer;
+  grub_int32_t issuer_len;
   grub_pkcs7_mdalgo_t md_algo;
   grub_pkcs7_sigalgo_t sig_algo;
   grub_uint8_t *sig;
