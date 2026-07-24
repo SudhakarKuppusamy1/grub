@@ -683,7 +683,6 @@ read_data (struct grub_ntfs_attr *at, grub_uint8_t *pa, grub_uint8_t *dest,
 	   grub_disk_read_hook_t read_hook, void *read_hook_data)
 {
   struct grub_ntfs_rlst cc, *ctx;
-  grub_uint8_t *end_ptr = (pa + len);
   grub_uint16_t run_offset;
 
   if (len == 0)
@@ -718,7 +717,7 @@ read_data (struct grub_ntfs_attr *at, grub_uint8_t *pa, grub_uint8_t *dest,
     }
 
   run_offset = u16at (pa, 0x20);
-  if ((run_offset + pa) >= end_ptr || ((run_offset + pa) >= (at->end)))
+  if ((run_offset + pa) >= (at->end))
       return grub_error (GRUB_ERR_BAD_FS, "run offset out of range");
 
   ctx->cur_run = pa + run_offset;
