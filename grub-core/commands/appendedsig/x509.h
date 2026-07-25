@@ -23,6 +23,8 @@
 #include <grub/crypto.h>
 #include <libtasn1.h>
 
+#include "pk.h"
+
 /* Certificate fingerprint. */
 #define GRUB_MAX_FINGERPRINT     3
 #define GRUB_FINGERPRINT_SHA256  0
@@ -41,14 +43,10 @@ struct pk_algo
   const char *aliases;
   const char *oid;
   const grub_int32_t oid_len;
+  const grub_pk_verify_t verify;
 };
 typedef struct pk_algo grub_x509_algo_t;
 
-struct pub_key
-{
-  gcry_mpi_t modulus;
-  gcry_mpi_t exponent;
-};
 typedef struct pub_key grub_x509_pk_t;
 
 /* Subject Public Key Info. */

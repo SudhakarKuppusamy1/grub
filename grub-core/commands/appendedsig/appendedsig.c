@@ -573,55 +573,14 @@ verify_binary_hash (const grub_uint8_t *data, const grub_size_t data_size)
   return GRUB_ERR_EOF;
 }
 
-/*
- * Given a hash value 'hval', of hash specification 'hash', prepare the
- * S-expressions (sexp) and perform the signature verification.
- */
-static grub_err_t
-verify_signature (const grub_x509_cert_t *pk, const grub_uint8_t *signature,
-                  const grub_int32_t sig_len, const gcry_md_spec_t *hash,
-                  const grub_uint8_t *hval)
-{
-  grub_err_t ret = GRUB_ERR_BAD_SIGNATURE;
-  gcry_sexp_t hsexp = NULL, pubkey = NULL, sig = NULL;
-  grub_size_t errof;
-
-  if (_gcry_sexp_build (&hsexp, &errof, "(data (flags %s) (hash %s %b))", "pkcs1",
-                        hash->name, hash->mdlen, hval) != GPG_ERR_NO_ERROR)
-    goto exit;
-
-  if (_gcry_sexp_build (&pubkey, &errof, "(public-key (dsa (n %M) (e %M)))",
-                        pk->spki.pk.modulus, pk->spki.pk.exponent) != GPG_ERR_NO_ERROR)
-    goto exit;
-
-  if (_gcry_sexp_build (&sig, &errof, "(sig-val (%s (s %b)))", pk->spki.pk_algo.aliases,
-                        sig_len, signature) != GPG_ERR_NO_ERROR)
-    goto exit;
-
-  if (grub_crypto_pk_rsa->verify (sig, hsexp, pubkey) == GPG_ERR_NO_ERROR)
-    ret = GRUB_ERR_NONE;
-
- exit:
-  _gcry_sexp_release (sig);
-  _gcry_sexp_release (hsexp);
-  _gcry_sexp_release (pubkey);
-
-  return ret;
-}
-
 static grub_err_t
 grub_verify_appended_signature (const grub_uint8_t *buf, grub_size_t bufsize)
 {
   grub_err_t err = GRUB_ERR_BAD_SIGNATURE, ret;
   grub_size_t datasize;
-  void *context;
-  grub_uint8_t *hash;
-  grub_x509_cert_t *pk;
   grub_append_sig_t sig;
-  grub_pkcs7_signer_t *si;
-  grub_pkcs7_mdalgo_t *md_algo;
-  grub_int32_t i = 0;
-  bool found_in_dbx = false;
+  grub_pkcs7_rcl_t rcl;
+  bool cert_revoked = false;
 
   if (!db.no_of_certs && !db.no_of_hashes)
     return grub_error (GRUB_ERR_BAD_SIGNATURE, "no trusted keys%s to verify against",
@@ -651,53 +610,20 @@ grub_verify_appended_signature (const grub_uint8_t *buf, grub_size_t bufsize)
     }
 
   /* Verify signature using trusted keys from db list. */
-  for (si = sig.pkcs7.signers; si != NULL; si = si->next, i++)
+  if (db.no_of_certs > 0)
     {
-      md_algo = &si->md_algo;
-      context = grub_zalloc (md_algo->hash->contextsize + 1);
-      if (context == NULL)
-        return grub_errno;
-
-      md_algo->hash->init (context, 0);
-      md_algo->hash->write (context, buf, datasize);
-      md_algo->hash->final (context);
-      hash = md_algo->hash->read (context);
-
-      grub_dprintf ("appendedsig", "data size %" PRIuGRUB_SIZE ", signer %d hash %02x%02x%02x%02x...\n",
-                    datasize, i, hash[0], hash[1], hash[2], hash[3]);
-
-      for (pk = db.certs; pk != NULL; pk = pk->next)
-        {
-          ret = verify_signature (pk, si->sig, si->sig_len, md_algo->hash, hash);
-          if (ret == GRUB_ERR_NONE)
-            {
-              if (append_key_mgmt == true && check_aginst_dbx (pk, NULL, 0, false) == true)
-	        {
-                  ret = GRUB_ERR_BAD_SIGNATURE;
-		  found_in_dbx = true;
-                  grub_dprintf ("appendedsig", "key '%s' present in the dbx list\n",
-                                pk->subject);
-                }
-              else
-                grub_dprintf ("appendedsig", "verify signer %d with key '%s' succeeded\n",
-                              i, pk->subject);
-              break;
-            }
-
-          grub_dprintf ("appendedsig", "verify signer %d with key '%s' failed\n",
-                        i, pk->subject);
-        }
-
-      grub_free (context);
-      if (ret == GRUB_ERR_NONE)
-        break;
+      rcl.certs = dbx.certs;
+      rcl.hashes = dbx.hashes;
+      ret = grub_pkcs7_spec->verify (&sig.pkcs7, db.certs, &rcl, buf,
+                                     datasize, &cert_revoked);
     }
 
-  grub_pkcs7_spec->release (&sig.pkcs7);
+   grub_pkcs7_spec->release (&sig.pkcs7);
 
-  if (ret == GRUB_ERR_NONE ||
-      ((ret != GRUB_ERR_NONE && found_in_dbx == false) && err == GRUB_ERR_NONE))
-    return GRUB_ERR_NONE;
+   if (ret == GRUB_ERR_NONE ||
+       ((ret == GRUB_ERR_BAD_SIGNATURE && cert_revoked == false) &&
+        err == GRUB_ERR_NONE))
+     return GRUB_ERR_NONE;
 
   return grub_error (ret, "failed to verify signature against a trusted key");
 }

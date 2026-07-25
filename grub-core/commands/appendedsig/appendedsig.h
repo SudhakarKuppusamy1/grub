@@ -22,6 +22,7 @@
 
 #include <grub/crypto.h>
 #include "x509.h"
+#include "pkcs7.h"
 
 /* Max size of hash data. */
 #define GRUB_MAX_HASH_LEN  64
@@ -65,13 +66,6 @@ struct append_sig
 };
 typedef struct append_sig grub_append_sig_t;
 
-struct hash_list
-{
-  grub_uint8_t *hash;      /* Certificate/binary hash. */
-  grub_size_t hash_size;   /* Sizes of certificate/binary hash. */
-
-  struct hash_list *next;
-};
 typedef struct hash_list grub_hash_t;
 
 /* This represents Secure Boot Signature Databases db and dbx. */

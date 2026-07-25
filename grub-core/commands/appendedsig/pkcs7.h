@@ -22,6 +22,8 @@
 
 #include <grub/crypto.h>
 #include "x509.h"
+#include "pk.h"
+
 
 struct sig_algo
 {
@@ -68,9 +70,34 @@ struct pkcs7_signedData
 };
 typedef struct pkcs7_signedData grub_pkcs7_signed_data_t;
 
+struct hash_list
+{
+  grub_uint8_t *hash;
+  grub_size_t hash_size;
+
+  struct hash_list *next;
+};
+typedef struct hash_list grub_pkcs7_hash_t;
+
+/* This represents revoked certificate list. */
+struct rcl
+{
+  grub_x509_cert_t *certs;    /* Certificate. */
+  grub_pkcs7_hash_t *hashes;  /* Certificate hash. */
+};
+typedef struct rcl grub_pkcs7_rcl_t;
+
 /* Type for the pkcs7_signed_data_parse_der function.  */
 typedef grub_err_t (*grub_pkcs7_parse_t) (const void *der_data, grub_int32_t der_data_len,
                                           grub_pkcs7_signed_data_t *pkcs7_signed_data);
+
+/* Type for the pkcs7 signed data verify function.  */
+typedef grub_err_t (*grub_pkcs7_verify_t) (const grub_pkcs7_signed_data_t *pkcs7,
+                                           const grub_x509_cert_t *trust_certs,
+                                           const grub_pkcs7_rcl_t *rcl,
+                                           const grub_uint8_t *data,
+                                           const grub_size_t data_len,
+                                           bool *cert_revoked);
 
 /* Type for the pkcs7_signed_data_release function.  */
 typedef void (*grub_pkcs7_release_t) (grub_pkcs7_signed_data_t *pkcs7_signed_data);
@@ -82,6 +109,7 @@ typedef struct pkcs7_spec
 {
   const char *name;
   grub_pkcs7_parse_t parse_der;
+  grub_pkcs7_verify_t verify;
   grub_pkcs7_release_t release;
   grub_pkcs7_free_t free;
 } grub_pkcs7_spec_t;

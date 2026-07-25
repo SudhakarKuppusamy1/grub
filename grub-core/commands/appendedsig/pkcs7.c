@@ -553,6 +553,109 @@ pkcs7_signed_data_parse_der (const void *der_data, grub_int32_t der_data_len,
   return ret;
 }
 
+static grub_err_t
+pkcs7_check_cert_aginst_rcl (const grub_pkcs7_rcl_t *rcl, const grub_x509_cert_t *pk)
+{
+  grub_x509_cert_t *cert;
+
+  for (cert = rcl->certs; cert != NULL; cert = cert->next)
+    {
+      if (grub_x509_spec->cert_cmp (cert, pk) == true)
+        {
+          grub_dprintf ("appendedsig",
+                        "key with PK-Algorithm (%s), issuer ('%s'), and serialNumber (%s)"
+                        " is present in the revoked list\n",
+                        pk->spki.pk_algo.name, pk->issuer, pk->serial);
+          return GRUB_ERR_BAD_SIGNATURE;
+        }
+    }
+
+  return GRUB_ERR_NONE;
+}
+
+/* Check the certificate presence in the revoked certificate list (rcl). */
+static grub_err_t
+pkcs7_check_aginst_rcl (const grub_pkcs7_rcl_t *rcl, const grub_x509_cert_t *pk)
+{
+  grub_pkcs7_hash_t *curr_hash;
+  grub_err_t ret;
+
+  ret = pkcs7_check_cert_aginst_rcl (rcl, pk);
+  if (ret != GRUB_ERR_NONE)
+    return ret;
+
+  for (curr_hash = rcl->hashes; curr_hash != NULL; curr_hash = curr_hash->next)
+    {
+      if (grub_x509_spec->fp_cmp (curr_hash->hash, curr_hash->hash_size, pk) == true)
+        {
+          grub_dprintf ("appendedsig",
+                        "key with PK-Algorithm (%s), issuer ('%s'), and serialNumber (%s)"
+                        " is present in the revoked list\n",
+                        pk->spki.pk_algo.name, pk->issuer, pk->serial);
+          return GRUB_ERR_BAD_SIGNATURE;
+        }
+    }
+
+  return ret;
+}
+
+static grub_err_t
+pkcs7_signed_data_verify (const grub_pkcs7_signed_data_t *pkcs7,
+                          const grub_x509_cert_t *trust_certs,
+                          const grub_pkcs7_rcl_t *rcl,
+                          const grub_uint8_t *data,
+                          const grub_size_t data_len,
+                          bool *cert_revoked)
+{
+  grub_int32_t i = 0;
+  grub_err_t ret = GRUB_ERR_BAD_SIGNATURE;
+  grub_pkcs7_signer_t *signer;
+  const grub_x509_cert_t *pk;
+
+  if (pkcs7 == NULL || trust_certs == NULL || data == NULL ||
+      data_len == 0 || cert_revoked == NULL)
+    return grub_error (GRUB_ERR_BAD_ARGUMENT, "bad input data");
+
+  if (pkcs7->no_of_signers == 0 || pkcs7->signers == NULL)
+    return grub_error (GRUB_ERR_BAD_NUMBER, "no PKCS7 signatures to verify");
+
+  for (signer = pkcs7->signers; signer != NULL; signer = signer->next, i++)
+    {
+      for (pk = trust_certs; pk != NULL; pk = pk->next)
+        {
+          ret = pk->spki.pk_algo.verify (data, data_len, signer->md_algo.hash,
+                                         signer->sig, signer->sig_len,
+                                         &pk->spki.pk, pk->spki.pk_algo.aliases);
+          if (ret == GRUB_ERR_NONE)
+            {
+              ret = pkcs7_check_aginst_rcl (rcl, pk);
+              if (ret != GRUB_ERR_NONE)
+                *cert_revoked = true;
+              else
+                grub_dprintf ("appendedsig",
+                              "verify signer %d signatureAlgorithm (%s), issuer ('%s'), and "
+                              "serialNumber (%s) with key PK-Algorithm (%s), issuer ('%s'), "
+                              "and serialNumber (%s) succeeded\n",
+                              i, signer->sig_algo.name, signer->issuer, signer->serial,
+                              pk->spki.pk_algo.name, pk->issuer, pk->serial);
+              break;
+            }
+
+          grub_dprintf ("appendedsig",
+                        "verify signer %d signatureAlgorithm (%s), issuer ('%s'), and "
+                        "serialNumber (%s) with key PK-Algorithm (%s), issuer ('%s'), "
+                        "and serialNumber (%s) failed\n",
+                        i, signer->sig_algo.name, signer->issuer, signer->serial,
+                        pk->spki.pk_algo.name, pk->issuer, pk->serial);
+        }
+
+      if (ret == GRUB_ERR_NONE)
+        break;
+    }
+
+  return ret;
+}
+
 static void
 pkcs7_free_signers (grub_pkcs7_signer_t *signers)
 {
@@ -598,6 +701,7 @@ static grub_pkcs7_spec_t _grub_pkcs7_spec =
   {
     "PKCS7",
     pkcs7_signed_data_parse_der,
+    pkcs7_signed_data_verify,
     pkcs7_signed_data_release,
     pkcs7_signed_data_free
   };

@@ -57,7 +57,8 @@ static const grub_int32_t extendedKeyUsage_oid_len = 9;
 static const grub_int32_t codeSigningUsage_oid_len = 17;
 
 /* RFC 3279 2.3.1  RSA Keys. */
-static const grub_x509_algo_t pk_algo = {"rsaEncryption", "rsa", "1.2.840.113549.1.1.1", 20};
+static const grub_x509_algo_t pk_algo = {"rsaEncryption", "rsa", "1.2.840.113549.1.1.1",
+                                         20, &grub_pk_rsa_verify};
 static const grub_int32_t rsa_key[] = {2048, 3072, 4096};
 
 static bool
