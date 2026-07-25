@@ -1040,6 +1040,7 @@ module = {
   common = commands/appendedsig/asn1_util.c;
   common = commands/appendedsig/gnutls_asn1_tab.c;
   common = commands/appendedsig/pkix_asn1_tab.c;
+  common = commands/appendedsig/pk.c;
   enable = emu;
   enable = powerpc_ieee1275;
   cflags = '$(CFLAGS_GCRY) -Wno-redundant-decls';

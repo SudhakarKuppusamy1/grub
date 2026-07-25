@@ -88,6 +88,7 @@ EXTRA_DIST += grub-core/commands/appendedsig/asn1_util.h
 EXTRA_DIST += grub-core/commands/appendedsig/util.h
 EXTRA_DIST += grub-core/commands/appendedsig/x509.h
 EXTRA_DIST += grub-core/commands/appendedsig/pkcs7.h
+EXTRA_DIST += grub-core/commands/appendedsig/pk.h
 
 EXTRA_DIST += grub-core/lib/LzmaDec.c
 

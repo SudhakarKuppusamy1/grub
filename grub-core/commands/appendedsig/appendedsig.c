@@ -763,53 +763,12 @@ verify_binary_hash (const grub_uint8_t *data, const grub_size_t data_size)
   return GRUB_ERR_EOF;
 }
 
-/*
- * Given a hash value 'hval', of hash specification 'hash', prepare the
- * S-expressions (sexp) and perform the signature verification.
- */
-static grub_err_t
-verify_signature (const grub_x509_cert_t *pk, const gcry_mpi_t hmpi,
-                  const gcry_md_spec_t *hash, const grub_uint8_t *hval)
-{
-  grub_err_t ret = GRUB_ERR_BAD_SIGNATURE;
-  gcry_sexp_t hsexp = NULL, pubkey = NULL, sig = NULL;
-  grub_size_t errof;
-
-  if (_gcry_sexp_build (&hsexp, &errof, "(data (flags %s) (hash %s %b))", "pkcs1",
-                        hash->name, hash->mdlen, hval) != GPG_ERR_NO_ERROR)
-    goto exit;
-
-  if (_gcry_sexp_build (&pubkey, &errof, "(public-key (dsa (n %M) (e %M)))",
-                        pk->spki.pk.modulus, pk->spki.pk.exponent) != GPG_ERR_NO_ERROR)
-    goto exit;
-
-  if (_gcry_sexp_build (&sig, &errof, "(sig-val (%s (s %M)))", pk->spki.pk_algo.aliases,
-                        hmpi) != GPG_ERR_NO_ERROR)
-    goto exit;
-
-  if (grub_crypto_pk_rsa->verify (sig, hsexp, pubkey) == GPG_ERR_NO_ERROR)
-    ret = GRUB_ERR_NONE;
-
- exit:
-  _gcry_sexp_release (sig);
-  _gcry_sexp_release (hsexp);
-  _gcry_sexp_release (pubkey);
-
-  return ret;
-}
-
 static grub_err_t
 grub_verify_appended_signature (const grub_uint8_t *buf, grub_size_t bufsize)
 {
   grub_err_t err;
   grub_size_t datasize;
-  void *context;
-  grub_uint8_t *hash;
-  grub_x509_cert_t *pk;
   grub_appendedsig_t sig;
-  grub_pkcs7_signer_t *si;
-  grub_mdalgo_t *digest_algo;
-  grub_int32_t i = 0;
 
   if (!db.no_of_certs && !db.no_of_hashes)
     return grub_error (GRUB_ERR_BAD_SIGNATURE, "no trusted keys to verify against");
@@ -836,45 +795,17 @@ grub_verify_appended_signature (const grub_uint8_t *buf, grub_size_t bufsize)
         }
     }
 
-  /* Verify signature using trusted keys from db list. */
-  for (si = sig.pkcs7.signers; si != NULL; si = si->next)
+  if (db.no_of_certs > 0 && db.certs != NULL)
     {
-      digest_algo = &si->digest_algo;
-      context = grub_zalloc (digest_algo->hash->contextsize);
-      if (context == NULL)
-        return grub_errno;
-
-      digest_algo->hash->init (context, 0);
-      digest_algo->hash->write (context, buf, datasize);
-      digest_algo->hash->final (context);
-      hash = digest_algo->hash->read (context);
-
-      grub_dprintf ("appendedsig", "data size %" PRIuGRUB_SIZE ", signer %d hash %02x%02x%02x%02x...\n",
-                    datasize, i, hash[0], hash[1], hash[2], hash[3]);
-
-      for (pk = db.certs; pk != NULL; pk = pk->next)
-        {
-          err = verify_signature (pk, si->signature, digest_algo->hash, hash);
-          if (err == GRUB_ERR_NONE)
-            {
-              grub_dprintf ("appendedsig", "verify signer %d with key '%s' succeeded\n",
-                            i, pk->subject);
-              break;
-            }
-
-          grub_dprintf ("appendedsig", "verify signer %d with key '%s' failed\n",
-                        i, pk->subject);
-        }
-      i++;
-      grub_free (context);
-      if (err == GRUB_ERR_NONE)
-        break;
+      err = grub_pkcs7_spec->verify (&sig.pkcs7, db.certs, buf, datasize);
+      grub_pkcs7_spec->release (&sig.pkcs7);
+      if (err == GRUB_ERR_BAD_SIGNATURE)
+        return grub_error (err, "failed to verify signature against a trusted key");
     }
 
-  grub_pkcs7_spec->release (&sig.pkcs7);
-
-  if (err != GRUB_ERR_NONE)
-    return grub_error (err, "failed to verify signature against a trusted key");
+  if (err == GRUB_ERR_EOF)
+    err = grub_error (err,
+                      "there is no valid key/hash to verify the signature/file");
 
   return err;
 }

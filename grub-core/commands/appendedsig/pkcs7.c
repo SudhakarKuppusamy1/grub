@@ -40,7 +40,8 @@ static const grub_mdalgo_t md_algos [] =
   {"sha512", "2.16.840.1.101.3.4.2.3", 22, &_gcry_digest_spec_sha512}
 };
 
-static const grub_sigalgo_t sig_algos = {"rsaEncryption", "rsa", "1.2.840.113549.1.1.1", 20};
+static const grub_sigalgo_t sig_algos = {"rsaEncryption", "rsa", "1.2.840.113549.1.1.1",
+                                         20, &grub_pk_rsa_verify};
 
 static void
 pkcs7_free_signers (grub_pkcs7_signer_t *signers);
@@ -321,7 +322,6 @@ static grub_err_t
 pkcs7_get_signerinfo_signature (asn1_node pkcs7_asn1, grub_int32_t signer_index,
                                 grub_pkcs7_signer_t *signer)
 {
-  gcry_error_t gcry_err;
   grub_uint8_t *signature;
   grub_int32_t signature_len = 0;
   char *sig_path;
@@ -338,13 +338,8 @@ pkcs7_get_signerinfo_signature (asn1_node pkcs7_asn1, grub_int32_t signer_index,
   if (signature == NULL)
     return grub_errno;
 
-  gcry_err = _gcry_mpi_scan (&signer->signature, GCRYMPI_FMT_USG, signature,
-                             signature_len, NULL);
-  grub_free (signature);
-  if (gcry_err != GPG_ERR_NO_ERROR)
-    return grub_error (GRUB_ERR_BAD_SIGNATURE,
-                       "error loading signature %d into MPI structure: %d",
-                       signer_index, gcry_err);
+  signer->signature = signature;
+  signer->signature_len = signature_len;
 
   return GRUB_ERR_NONE;
 }
@@ -552,6 +547,59 @@ pkcs7_signed_data_parse_der (const void *der_data, grub_int32_t der_data_len,
   return ret;
 }
 
+static grub_err_t
+pkcs7_signed_data_verify (const grub_pkcs7_signed_data_t *pkcs7,
+                          const grub_x509_cert_t *trust_certs,
+                          const grub_uint8_t *data,
+                          const grub_size_t data_len)
+{
+  grub_int32_t i = 1;
+  grub_err_t ret = GRUB_ERR_EOF;
+  grub_pkcs7_signer_t *signer;
+  const grub_x509_cert_t *pk;
+
+  if (pkcs7 == NULL || trust_certs == NULL || data == NULL || data_len == 0)
+    return grub_error (GRUB_ERR_BAD_ARGUMENT, "bad input data");
+
+  if (pkcs7->no_of_signers == 0 || pkcs7->signers == NULL)
+    return grub_error (GRUB_ERR_BAD_NUMBER, "no PKCS7 signatures to verify");
+
+  for (signer = pkcs7->signers; signer != NULL; signer = signer->next, i++)
+    {
+      for (pk = trust_certs; pk != NULL; pk = pk->next)
+        {
+          if (signer->sig_algo.verify == pk->spki.pk_algo.verify)
+            ret = signer->sig_algo.verify (data, data_len, signer->digest_algo.hash,
+                                           signer->signature, signer->signature_len,
+                                           &pk->spki.pk, pk->spki.pk_algo.aliases);
+          else
+            ret = pk->spki.pk_algo.verify (data, data_len, signer->digest_algo.hash,
+                                           signer->signature, signer->signature_len,
+                                           &pk->spki.pk, pk->spki.pk_algo.aliases);
+
+          if (ret == GRUB_ERR_NONE)
+            {
+              grub_dprintf ("appendedsig",
+                            "verify signer %d signatureAlgorithm (%s), issuer ('%s'), and "
+                            "serialNumber (%s) with key PK-Algorithm (%s), issuer ('%s'), "
+                            "and serialNumber (%s) succeeded\n",
+                            i, signer->sig_algo.name, signer->issuer, signer->serial,
+                            pk->spki.pk_algo.name, pk->issuer, pk->serial);
+              return ret;
+            }
+
+          grub_dprintf ("appendedsig",
+                        "verify signer %d signatureAlgorithm (%s), issuer ('%s'), and "
+                        "serialNumber (%s) with key PK-Algorithm (%s), issuer ('%s'), "
+                        "and serialNumber (%s) failed\n",
+                        i, signer->sig_algo.name, signer->issuer, signer->serial,
+                        pk->spki.pk_algo.name, pk->issuer, pk->serial);
+        }
+    }
+
+  return ret;
+}
+
 static void
 pkcs7_free_signers (grub_pkcs7_signer_t *signers)
 {
@@ -562,7 +610,7 @@ pkcs7_free_signers (grub_pkcs7_signer_t *signers)
       grub_free (signers->serial);
       grub_free (signers->issuer);
       grub_memset (&signers->digest_algo, 0x00, sizeof (grub_mdalgo_t));
-      _gcry_mpi_release (signers->signature);
+      grub_free (signers->signature);
       prev_signer = signers;
       signers = signers->next;
       grub_free (prev_signer);
@@ -596,6 +644,7 @@ static grub_pkcs7_spec_t _grub_pkcs7_spec =
   {
     "PKCS7",
     pkcs7_signed_data_parse_der,
+    pkcs7_signed_data_verify,
     pkcs7_signed_data_release,
     pkcs7_signed_data_free
   };
