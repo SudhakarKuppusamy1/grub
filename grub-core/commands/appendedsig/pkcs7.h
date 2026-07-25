@@ -22,6 +22,8 @@
 
 #include <grub/crypto.h>
 #include "x509.h"
+#include "pk.h"
+
 
 struct sig_algo
 {
@@ -29,6 +31,7 @@ struct sig_algo
   const char *aliases;
   const char *oid;
   const grub_int32_t oid_len;
+  const grub_pk_verify_t verify;
 };
 typedef struct sig_algo grub_sigalgo_t;
 
@@ -51,7 +54,8 @@ struct pkcs7_signerInfo
   grub_int32_t issuer_len;
   grub_mdalgo_t digest_algo;
   grub_sigalgo_t sig_algo;
-  gcry_mpi_t signature;
+  grub_uint8_t *signature;
+  grub_int32_t signature_len;
   struct pkcs7_signerInfo *next;
 };
 typedef struct pkcs7_signerInfo grub_pkcs7_signer_t;
@@ -70,6 +74,12 @@ typedef struct pkcs7_signedData grub_pkcs7_signed_data_t;
 typedef grub_err_t (*grub_pkcs7_parse_t) (const void *der_data, grub_int32_t der_data_len,
                                           grub_pkcs7_signed_data_t *pkcs7_signed_data);
 
+/* Type for the pkcs7 signed data verify function.  */
+typedef grub_err_t (*grub_pkcs7_verify_t) (const grub_pkcs7_signed_data_t *pkcs7,
+                                           const grub_x509_cert_t *trust_certs,
+                                           const grub_uint8_t *data,
+                                           const grub_size_t data_len);
+
 /* Type for the pkcs7_signed_data_release function.  */
 typedef void (*grub_pkcs7_release_t) (grub_pkcs7_signed_data_t *pkcs7_signed_data);
 
@@ -80,6 +90,7 @@ typedef struct pkcs7_spec
 {
   const char *name;
   grub_pkcs7_parse_t parse_der;
+  grub_pkcs7_verify_t verify;
   grub_pkcs7_release_t release;
   grub_pkcs7_free_t free;
 } grub_pkcs7_spec_t;
