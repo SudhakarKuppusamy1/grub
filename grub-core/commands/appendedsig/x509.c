@@ -779,6 +779,29 @@ x509_cert_parse_der (const void *der_data, grub_int32_t der_data_size, grub_x509
   return ret;
 }
 
+static void
+x509_print_cert (const grub_x509_cert_t *crt)
+{
+  grub_uint32_t cert_num = 1;
+  const grub_x509_cert_t *cert;
+
+  for (cert = crt; cert != NULL; cert = cert->next, cert_num++)
+  {
+    grub_printf ("\nCertificate: %u\n", cert_num);
+    grub_printf ("    Data:\n");
+    grub_printf ("        Version: %u (0x%u)\n", cert->version + 1, cert->version);
+    grub_printf ("        Serial Number: 0x%s\n", cert->serial);
+    grub_printf ("        Issuer: %s\n", cert->issuer);
+    grub_printf ("        Subject: %s\n", cert->subject);
+    grub_printf ("        Subject Public Key Info:\n");
+    grub_printf ("            Public Key Algorithm: %s\n", cert->spki.pk_algo.name);
+    grub_printf ("                Public-Key: (%d bit)\n", cert->spki.pk_len);
+    grub_printf ("    Fingerprint: sha256\n         ");
+    grub_util_hexdump_colon (&cert->fingerprint[GRUB_FINGERPRINT_SHA256][0],
+                             grub_strlen ((char *) cert->fingerprint[GRUB_FINGERPRINT_SHA256]));
+  }
+}
+
 /*
  * Release all the storage associated with the x509 certificate. If the caller
  * dynamically allocated the certificate, it must free it. The caller is also
@@ -808,6 +831,7 @@ x509_cert_free (grub_x509_cert_t *cert)
 static grub_x509_spec_t _grub_x509_spec =
   {
     "X509",
+    x509_print_cert,
     x509_cert_parse_der,
     x509_cert_release,
     x509_cert_free

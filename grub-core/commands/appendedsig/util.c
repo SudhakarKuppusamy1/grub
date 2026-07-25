@@ -54,3 +54,38 @@ grub_util_buffer2hex (const grub_uint8_t *data, const grub_int32_t data_len,
 
   return GRUB_ERR_NONE;
 }
+
+/*
+ * We cannot use hexdump() to display hash data because it is typically displayed
+ * in hexadecimal format, along with an ASCII representation of the same data.
+ *
+ * Example: sha256 hash data
+ * 00000000  52 b5 90 49 64 de 22 d7  4e 5f 4f b4 1b 51 9c 34  |R..Id.".N_O..Q.4|
+ * 00000010  b1 96 21 7c 91 78 a5 0d  20 8c e9 5c 22 54 53 f7  |..!|.x.. ..\"TS.|
+ *
+ * An appended signature only required to display the hexadecimal of the hash data
+ * by separating each byte with ":". So, we introduced a new method hexdump_colon
+ * to display it.
+ *
+ * Example: Sha256 hash data
+ *  52:b5:90:49:64:de:22:d7:4e:5f:4f:b4:1b:51:9c:34:
+ *  b1:96:21:7c:91:78:a5:0d:20:8c:e9:5c:22:54:53:f7
+ */
+void
+grub_util_hexdump_colon (const grub_uint8_t *data, const grub_size_t length)
+{
+  grub_size_t i, count = 0;
+
+  for (i = 0; i < length - 1; i++)
+    {
+      grub_printf ("%02x:", data[i]);
+      count++;
+      if (count == 16)
+        {
+          grub_printf ("\n         ");
+          count = 0;
+        }
+    }
+
+  grub_printf ("%02x\n", data[i]);
+}

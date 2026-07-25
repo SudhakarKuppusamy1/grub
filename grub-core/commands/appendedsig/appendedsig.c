@@ -38,6 +38,7 @@
 #endif
 #include <grub/efi/pks.h>
 
+#include "util.h"
 #include "asn1_util.h"
 #include "x509.h"
 #include "pkcs7.h"
@@ -100,58 +101,6 @@ static struct grub_fs pseudo_fs = {
   .name = "pseudo",
   .fs_read = pseudo_read
 };
-
-/*
- * We cannot use hexdump() to display hash data because it is typically displayed
- * in hexadecimal format, along with an ASCII representation of the same data.
- *
- * Example: sha256 hash data
- * 00000000  52 b5 90 49 64 de 22 d7  4e 5f 4f b4 1b 51 9c 34  |R..Id.".N_O..Q.4|
- * 00000010  b1 96 21 7c 91 78 a5 0d  20 8c e9 5c 22 54 53 f7  |..!|.x.. ..\"TS.|
- *
- * An appended signature only required to display the hexadecimal of the hash data
- * by separating each byte with ":". So, we introduced a new method hexdump_colon
- * to display it.
- *
- * Example: Sha256 hash data
- *  52:b5:90:49:64:de:22:d7:4e:5f:4f:b4:1b:51:9c:34:
- *  b1:96:21:7c:91:78:a5:0d:20:8c:e9:5c:22:54:53:f7
- */
-static void
-hexdump_colon (const grub_uint8_t *data, const grub_size_t length)
-{
-  grub_size_t i, count = 0;
-
-  for (i = 0; i < length - 1; i++)
-    {
-      grub_printf ("%02x:", data[i]);
-      count++;
-      if (count == 16)
-        {
-          grub_printf ("\n         ");
-          count = 0;
-        }
-    }
-
-  grub_printf ("%02x\n", data[i]);
-}
-
-static void
-print_certificate (const grub_x509_cert_t *cert, const grub_uint32_t cert_num)
-{
-  grub_printf ("\nCertificate: %u\n", cert_num);
-  grub_printf ("    Data:\n");
-  grub_printf ("        Version: %u (0x%u)\n", cert->version + 1, cert->version);
-  grub_printf ("        Serial Number: 0x%s\n", cert->serial);
-  grub_printf ("        Issuer: %s\n", cert->issuer);
-  grub_printf ("        Subject: %s\n", cert->subject);
-  grub_printf ("        Subject Public Key Info:\n");
-  grub_printf ("            Public Key Algorithm: %s\n", cert->spki.pk_algo.name);
-  grub_printf ("                Public-Key: (%d bit)\n", cert->spki.pk_len);
-  grub_printf ("    Fingerprint: sha256\n         ");
-  hexdump_colon (&cert->fingerprint[GRUB_FINGERPRINT_SHA256][0],
-                 grub_strlen ((char *) cert->fingerprint[GRUB_FINGERPRINT_SHA256]));
-}
 
 /*
  * GUID can be used to determine the hashing function and generate the hash using
@@ -975,12 +924,10 @@ static grub_err_t
 grub_cmd_list_db (grub_command_t cmd __attribute__ ((unused)), int argc __attribute__ ((unused)),
                   char **args __attribute__ ((unused)))
 {
-  grub_x509_cert_t *cert;
   grub_hash_t *curr_hash;
-  grub_uint32_t i = 0, cert_num = 1;
+  grub_uint32_t i = 0;
 
-  for (cert = db.certs; cert != NULL; cert = cert->next, cert_num++)
-    print_certificate (cert, cert_num);
+  grub_x509_spec->print (db.certs);
 
   if (append_key_mgmt == false)
     return GRUB_ERR_NONE;
@@ -989,7 +936,7 @@ grub_cmd_list_db (grub_command_t cmd __attribute__ ((unused)), int argc __attrib
     {
       grub_printf ("\nBinary hash: %u\n", i + 1);
       grub_printf ("    Hash: sha%" PRIuGRUB_SIZE "\n         ", curr_hash->hash_size * 8);
-      hexdump_colon (curr_hash->hash, curr_hash->hash_size);
+      grub_util_hexdump_colon (curr_hash->hash, curr_hash->hash_size);
       i++;
     }
 
@@ -1000,22 +947,20 @@ static grub_err_t
 grub_cmd_list_dbx (grub_command_t cmd __attribute__((unused)),
                    int argc __attribute__((unused)), char **args __attribute__((unused)))
 {
-  grub_x509_cert_t *cert;
   grub_hash_t *curr_hash;
-  grub_uint32_t i = 0, cert_num = 1;
+  grub_uint32_t i = 0;
 
   if (append_key_mgmt == false)
     return grub_error (GRUB_ERR_ACCESS_DENIED,
                        "append_list_dbx command is unsupported in static key mode");
 
-  for (cert = dbx.certs; cert != NULL; cert = cert->next, cert_num++)
-    print_certificate (cert, cert_num);
+  grub_x509_spec->print (dbx.certs);
 
   for (curr_hash = dbx.hashes; curr_hash != NULL; curr_hash = curr_hash->next)
     {
       grub_printf ("\nCertificate/Binary hash: %u\n", i + 1);
       grub_printf ("    Hash: sha%" PRIuGRUB_SIZE "\n         ", curr_hash->hash_size * 8);
-      hexdump_colon (curr_hash->hash, curr_hash->hash_size);
+      grub_util_hexdump_colon (curr_hash->hash, curr_hash->hash_size);
       i++;
     }
 
