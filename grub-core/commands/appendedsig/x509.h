@@ -75,6 +75,9 @@ struct x509_cert
 };
 typedef struct x509_cert grub_x509_cert_t;
 
+/* Type for the x509_print_cert function.  */
+typedef void (*grub_x509_print_t) (const grub_x509_cert_t *crt);
+
 /* Type for the x509_cert_parse_der function.  */
 typedef grub_err_t (*grub_x509_parse_t) (const void *der_data,
                                          const grub_int32_t der_data_len,
@@ -89,6 +92,7 @@ typedef void (*grub_x509_free_t) (grub_x509_cert_t *cert);
 typedef struct x509_spec
 {
   const char *name;
+  grub_x509_print_t print;
   grub_x509_parse_t parse_der;
   grub_x509_release_t release;
   grub_x509_free_t free;
