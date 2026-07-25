@@ -1045,7 +1045,7 @@ module = {
   enable = powerpc_ieee1275;
   cflags = '$(CFLAGS_GCRY) -Wno-redundant-decls';
   cppflags = '$(CPPFLAGS_GCRY) -I$(srcdir)/lib/libtasn1-grub';
-  depends = crypto, gcry_rsa, gcry_sha256, gcry_sha512, mpi, asn1;
+  depends = crypto, gcry_pubkey_dilithium, gcry_rsa, gcry_sha256, gcry_sha512, mpi, asn1;
 };
 
 module = {

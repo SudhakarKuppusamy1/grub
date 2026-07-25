@@ -41,7 +41,13 @@ static const grub_pkcs7_mdalgo_t md_algos[] =
   {"sha512", "2.16.840.1.101.3.4.2.3", 22, &_gcry_digest_spec_sha512}
 };
 
-static const grub_pkcs7_sigalgo_t sig_algos = {"rsaEncryption", "rsa", "1.2.840.113549.1.1.1", 20};
+static const grub_pkcs7_sigalgo_t sig_algos[] =
+{
+  {"rsaEncryption", "rsa", "1.2.840.113549.1.1.1", 20},
+  {"ML-DSA-44", "dilithium2", "2.16.840.1.101.3.4.3.17", 23},
+  {"ML-DSA-65", "dilithium3", "2.16.840.1.101.3.4.3.18", 23},
+  {"ML-DSA-87", "dilithium5", "2.16.840.1.101.3.4.3.19", 23}
+};
 
 static void
 pkcs7_free_signers (grub_pkcs7_signer_t *signers);
@@ -286,6 +292,7 @@ pkcs7_get_signerinfo_sig_algo (asn1_node pkcs7_asn1, grub_int32_t signer_index,
                                grub_pkcs7_signer_t *signer)
 {
   grub_int32_t rc;
+  grub_size_t i;
   char *sig_algo_path;
   char algo_oid[GRUB_MAX_OID_LEN];
   grub_int32_t algo_oid_size = sizeof (algo_oid);
@@ -308,15 +315,18 @@ pkcs7_get_signerinfo_sig_algo (asn1_node pkcs7_asn1, grub_int32_t signer_index,
 
   grub_free (sig_algo_path);
 
-  if (sig_algos.oid_len == algo_oid_size - 1 &&
-      grub_strncmp (algo_oid, sig_algos.oid, sig_algos.oid_len) == 0)
+  for (i = 0; i < sizeof (sig_algos)/sizeof(sig_algos[0]); i++)
     {
-      grub_memcpy (&signer->sig_algo, &sig_algos, sizeof (sig_algos));
-      return GRUB_ERR_NONE;
+      if (sig_algos[i].oid_len == algo_oid_size - 1 &&
+          grub_strncmp (algo_oid, sig_algos[i].oid, sig_algos[i].oid_len) == 0)
+        {
+          grub_memcpy (&signer->sig_algo, &sig_algos[i], sizeof (sig_algos[i]));
+          return GRUB_ERR_NONE;
+        }
     }
 
   return grub_error (GRUB_ERR_NOT_IMPLEMENTED_YET,
-                     "only rsaEncryption is supported, found OID %s", algo_oid);
+                     "only rsaEncryption and ML-DSA are supported, found OID %s", algo_oid);
 }
 
 static grub_err_t
