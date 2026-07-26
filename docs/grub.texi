@@ -10070,8 +10070,13 @@ Certificates/hashes of certificates/binaries added through @command{append_add_d
 @command{append_add_dbx_cert}, @command{append_add_db_hash}, and @command{append_add_dbx_hash}
 will not be persisted across boots.
 
-Only signatures created using SHA-256 or SHA-512 hash algorithm along with RSA keys of size 2048,
-3072, or 4096 bits are supported.
+Signatures created using the SHA-256 or SHA-512 hash algorithms, along with the following RSA and ML-DSA,
+are only supported.
+
+@enumerate
+@item RSA: RSA-2048, RSA-3072, and RSA-4096
+@item ML-DSA: ML-DSA-44, ML-DSA-65, and ML-DSA-87
+@end enumerate
 
 A file can be signed with the @command{sign-file} utility supplied with the
 Linux kernel source. For example, if you have @code{signing.key} as the private
