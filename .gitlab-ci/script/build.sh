@@ -20,6 +20,10 @@ else
   ./configure --target="$i" --with-platform="$j" --enable-grub-mkfont --prefix="$(pwd)/grub-dist"
 fi
 
-make --quiet -j"${CPU_COUNT}" install
-make --quiet html
-make --quiet pdf
+if [ -n "${COVERITY_SCAN:-}" ]; then
+    cov-build --dir "${COVERITY_DIR}" make --quiet -j"${CPU_COUNT}"
+else
+    make --quiet -j"${CPU_COUNT}" install
+    make --quiet html
+    make --quiet pdf
+fi

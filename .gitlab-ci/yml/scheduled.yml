@@ -27,3 +27,17 @@ trigger-aarch64-linux-gnu-efi-check:
   rules:
     - if: $CI_PIPELINE_SOURCE == "schedule"
     - if: $CI_PIPELINE_SOURCE == "web"
+
+trigger-x86_64-efi-coverity-scan:
+  stage: scheduled
+  variables:
+    TARGET: x86_64
+    PLATFORM: efi
+    COVERITY_SCAN: true
+    COVERITY_DIR: cov-int
+  trigger:
+    include: '.gitlab-ci/yml/cov-scan.yml'
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "schedule"
+    - if: $CI_PIPELINE_SOURCE == "web"
+
