@@ -13,7 +13,7 @@ bootstrap:
 
 build:
   stage: build
-  extends: .build
+  extends: .build-artifacts
 
 check:
   stage: check

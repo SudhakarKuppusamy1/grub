@@ -4,38 +4,41 @@ default:
 variables:
   SCRIPT_DIR: "./.gitlab-ci/script"
 
+.artifacts:
+  artifacts:
+    paths:
+      - gnulib/
+    untracked: true
+    expire_in: 1 week
+    when: always
+
+.check-artifacts:
+  artifacts:
+    untracked: true
+    expire_in: 30 days
+    when: always
+
 .bootstrap:
   script:
     - ./bootstrap
-  artifacts:
-    when: always
-    untracked: true
-    paths:
-      - gnulib/
+  extends: .artifacts
 
 .build:
   dependencies:
     - bootstrap
   script:
     - $SCRIPT_DIR/build.sh
-  artifacts:
-    paths:
-      - gnulib/
-    untracked: true
-    expire_in: 1 week
-    when: always
+
+.build-artifacts:
+  extends:
+    - .build
+    - .artifacts
 
 .build-clang:
   dependencies:
     - bootstrap
   script:
     - $SCRIPT_DIR/build-clang.sh
-  artifacts:
-    paths:
-      - gnulib/
-    untracked: true
-    expire_in: 1 week
-    when: always
 
 .check-before-script:
   before_script:
@@ -49,12 +52,6 @@ variables:
       if [ -e /etc/init.d/zfs-fuse ]; then
         /etc/init.d/zfs-fuse start || :
       fi
-
-.check-artifacts:
-  artifacts:
-    untracked: true
-    expire_in: 30 days
-    when: always
 
 .check:
   script:
