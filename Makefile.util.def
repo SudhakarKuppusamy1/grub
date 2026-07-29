@@ -1579,6 +1579,24 @@ program = {
 };
 
 program = {
+  testcase = native;
+  name = tpcm_unit_test;
+  common = tests/tpcm_unit_test.c;
+  common = tests/lib/unit_test.c;
+  common = grub-core/kern/list.c;
+  common = grub-core/kern/misc.c;
+  common = grub-core/tests/lib/test.c;
+  common = grub-core/commands/tpcm.c;
+  common = grub-core/commands/efi/tpcm.c;
+  ldadd = libgrubmods.a;
+  ldadd = libgrubkern.a;
+  ldadd = libgrubgcry.a;
+  ldadd = grub-core/lib/gnulib/libgnu.a;
+  ldadd = '$(LIBDEVMAPPER) $(LIBZFS) $(LIBNVPAIR) $(LIBGEOM)';
+  ldflags = '-Wl,--wrap=grub_fatal';
+};
+
+program = {
   name = grub-menulst2cfg;
   mansection = 1;
   common = util/grub-menulst2cfg.c;

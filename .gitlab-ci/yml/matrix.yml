@@ -102,6 +102,7 @@
           - squashfs_test
           - syslinux_test
           - tar_test
+          - tpcm_unit_test
           - udf_test
           - xfs_test
       - TYPE: non-native
