@@ -1,6 +1,6 @@
 #!/bin/bash
 
-set -eu -o pipefail
+set -xeu -o pipefail
 
 # Set the number of parallel jobs for make, defaulting to 1 if it cannot be determined
 CPU_COUNT=1

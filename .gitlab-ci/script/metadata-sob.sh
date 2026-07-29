@@ -1,6 +1,6 @@
 #!/bin/bash
 
-set -eu -o pipefail
+set -xeu -o pipefail
 
 sob_fail=0
 echo "Checking commits for Signed-off-by label..."

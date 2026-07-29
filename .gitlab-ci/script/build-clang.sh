@@ -1,6 +1,6 @@
 #!/bin/bash
 
-set -eu -o pipefail
+set -xeu -o pipefail
 
 T="${TARGET}"
 P="${PLATFORM}"
