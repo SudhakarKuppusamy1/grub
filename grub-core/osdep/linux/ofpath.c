@@ -451,7 +451,7 @@ of_fc_port_name (const char *path, const char *subpath, char *port_name)
   ssize_t size;
 
   bname = xmalloc (sizeof (char) * BNAME_SIZE);
-  basepath = xmalloc (strlen (path));
+  basepath = xmalloc (strlen (path) + 1);
 
   /* Generate the path to get port name information from the drive */
   strncpy (basepath, path, subpath-path);
