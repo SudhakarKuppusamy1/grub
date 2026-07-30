@@ -199,6 +199,8 @@ add_multiple_nvme_bootdevices (const char *install_device)
   bool is_FC = false, is_splitter = false;
 
   nvme_ns = grub_strstr (install_device, "nvme");
+  if (nvme_ns == NULL)
+    return NULL;
   nsid = of_path_get_nvme_nsid (nvme_ns);
   if (nsid == 0)
     return NULL;
