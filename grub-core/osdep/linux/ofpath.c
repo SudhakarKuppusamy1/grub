@@ -372,9 +372,9 @@ find_file (char* filename, char* directory, struct ofpath_files_list_root* root,
   while ((ep = readdir(dp)) != NULL)
     {
       snprintf (full_path, 1024, "%s/%s", directory, ep->d_name);
-      lstat (full_path, &statbuf);
+      ret_val = lstat (full_path, &statbuf);
 
-      if (S_ISLNK (statbuf.st_mode))
+      if (ret_val == -1 || S_ISLNK (statbuf.st_mode))
         {
           continue;
         }
