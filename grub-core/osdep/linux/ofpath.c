@@ -437,11 +437,15 @@ of_path_of_ide(const char *sys_devname __attribute__((unused)), const char *devi
 }
 
 #define BNAME_SIZE 150
+/* "0x" + 16 hex digits + "\n" as provided by the fc_transport port_name
+   sysfs attribute, plus a NUL terminator.  */
+#define PORT_NAME_BUFFER_SIZE 20
 static void
 of_fc_port_name (const char *path, const char *subpath, char *port_name)
 {
   char *bname, *basepath, *p;
   int fd;
+  ssize_t size;
 
   bname = xmalloc (sizeof (char) * BNAME_SIZE);
   basepath = xmalloc (strlen (path));
@@ -457,8 +461,10 @@ of_fc_port_name (const char *path, const char *subpath, char *port_name)
   if (fd < 0)
     grub_util_error (_("cannot open `%s': %s"), bname, strerror (errno));
 
-  if (read (fd, port_name, sizeof (char) *19) < 0)
+  size = read (fd, port_name, PORT_NAME_BUFFER_SIZE - 1);
+  if (size < 0)
     grub_util_error (_("cannot read `%s': %s"), bname, strerror (errno));
+  port_name[size] = '\0';
 
   sscanf (port_name, "0x%s", port_name);
 
@@ -1026,7 +1032,7 @@ of_path_of_scsi(const char *sys_devname __attribute__((unused)), const char *dev
     {
       if (strstr (of_path, "vfc-client"))
         {
-	   char * port_name = xmalloc (sizeof (char) * 17);
+	   char * port_name = xmalloc (sizeof (char) * PORT_NAME_BUFFER_SIZE);
 	   of_fc_port_name (sysfs_path, p, port_name);
 
           snprintf (disk, sizeof (disk), "/%s@%s", disk_name, port_name);
@@ -1049,7 +1055,7 @@ of_path_of_scsi(const char *sys_devname __attribute__((unused)), const char *dev
 	}
 	}
     } else if (strstr (of_path, "fibre-channel") || (strstr (of_path, "vfc-client"))){
-        char * port_name = xmalloc (sizeof (char) * 17);
+        char * port_name = xmalloc (sizeof (char) * PORT_NAME_BUFFER_SIZE);
         of_fc_port_name (sysfs_path, p, port_name);
 
 	 snprintf (disk, sizeof (disk), "/%s@%s", disk_name, port_name);
