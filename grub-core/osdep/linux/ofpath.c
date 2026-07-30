@@ -367,7 +367,10 @@ find_file (char* filename, char* directory, struct ofpath_files_list_root* root,
 
   full_path = malloc (1024 * sizeof (char));
   if (!full_path)
-    return;
+    {
+      closedir (dp);
+      return;
+    }
 
   while ((ep = readdir(dp)) != NULL)
     {
