@@ -682,7 +682,7 @@ of_path_get_nvme_controller_name_node (const char* devname)
 unsigned int
 of_path_get_nvme_nsid (const char* devname)
 {
-  unsigned int nsid;
+  unsigned int nsid = 0;
   char *sysfs_path, *buf;
   FILE *fp;
 
