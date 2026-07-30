@@ -248,10 +248,17 @@ add_multiple_nvme_bootdevices (const char *install_device)
         }
       closedir (splitter_dp);
     }
-  sysfs_path = xrealpath (sysfs_path);
+  {
+    char *tmp = xrealpath (sysfs_path);
+    free (sysfs_path);
+    sysfs_path = tmp;
+  }
   dp = opendir (sysfs_path);
   if (!dp)
-    return NULL;
+    {
+      free (sysfs_path);
+      return NULL;
+    }
 
   ptr = multipath_boot = xmalloc (BOOTDEV_BUFFER);
   if (is_splitter == false && is_FC == false)
@@ -287,6 +294,7 @@ add_multiple_nvme_bootdevices (const char *install_device)
     }
   *--ptr = '\0';
   closedir (dp);
+  free (sysfs_path);
 
   return multipath_boot;
 }
