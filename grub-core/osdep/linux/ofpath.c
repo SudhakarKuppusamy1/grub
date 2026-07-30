@@ -532,7 +532,9 @@ of_find_fc_host (char* host_wwpn)
       if (!buf)
         break;
 
-      fscanf (fp, "%s", buf);
+      /* Ensure buf is null terminated if no data read from fp. */
+      buf[0] = '\0';
+      fscanf (fp, "%511s", buf);
       fclose (fp);
 
       if ((strcmp (buf, host_wwpn) == 0) && grub_strstr (node->filename, "fc_host"))
@@ -581,7 +583,7 @@ of_path_get_nvmeof_adapter_info (char* sysfs_path,
 
   snprintf (buf, 512, "%s/subsysnqn", sysfs_path);
   if (! (fp = fopen (buf, "r")) ||
-      fscanf (fp, "%s", nvmeof_info->nqn) != 1)
+      fscanf (fp, "%255s", nvmeof_info->nqn) != 1)
     {
       if (fp)
 	fclose (fp);
@@ -612,7 +614,7 @@ of_path_get_nvmeof_adapter_info (char* sysfs_path,
   fp = NULL;
   if (! (buf2 = malloc (sizeof (char) * 512)) ||
       ! (fp = fopen (buf, "r")) ||
-      fscanf (fp, "%s", buf2) != 1)
+      fscanf (fp, "%511s", buf2) != 1)
    {
       if (fp)
 	fclose (fp);
