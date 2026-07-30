@@ -800,6 +800,9 @@ of_path_of_nvme(const char *sys_devname __attribute__((unused)),
               snprintf (disk+chars_written, sizeof("/namespace@") + OFPATH_MAX_UINT_HEX_DIGITS + OFPATH_MAX_INT_DIGITS,
                         "/namespace@%x:%d", nsid, part);
             }
+          free (nvmeof_info->host_wwpn);
+          free (nvmeof_info->target_wwpn);
+          free (nvmeof_info->nqn);
           free (nvmeof_info);
         }
       else
@@ -828,6 +831,9 @@ of_path_of_nvme(const char *sys_devname __attribute__((unused)),
           sysfs_path = of_find_fc_host (nvmeof_info->host_wwpn);
           if (!sysfs_path)
             {
+              free (nvmeof_info->host_wwpn);
+              free (nvmeof_info->target_wwpn);
+              free (nvmeof_info->nqn);
               free (nvmeof_info);
               return NULL;
             }
@@ -841,6 +847,9 @@ of_path_of_nvme(const char *sys_devname __attribute__((unused)),
               snprintf (disk+chars_written,sizeof("/namespace@") + sizeof(char) * OFPATH_MAX_UINT_HEX_DIGITS,
                         "/namespace@%x", nsid);
             }
+          free (nvmeof_info->host_wwpn);
+          free (nvmeof_info->target_wwpn);
+          free (nvmeof_info->nqn);
           free (nvmeof_info);
         }
       else
