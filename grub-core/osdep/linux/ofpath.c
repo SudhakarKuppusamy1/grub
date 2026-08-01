@@ -640,7 +640,13 @@ of_path_get_nvmeof_adapter_info (char* sysfs_path,
       free (buf2);
       return -1;
     }
-  grub_memcpy (nvmeof_info->host_wwpn, buf3 + 1, 256);
+  {
+    grub_size_t remaining = grub_strlen (buf3 + 1);
+    if (remaining > 255)
+      remaining = 255;
+    grub_memcpy (nvmeof_info->host_wwpn, buf3 + 1, remaining);
+    nvmeof_info->host_wwpn[remaining] = '\0';
+  }
   if (! (buf3 = strchr (buf2, '-'))	||
       ! (buf3 = strchr (buf3 + 1, '-')) ||
       ! (buf3 = strchr (buf3 + 1, 'x')))
@@ -652,7 +658,13 @@ of_path_get_nvmeof_adapter_info (char* sysfs_path,
       free (buf2);
       return -1;
     }
-  grub_memcpy (nvmeof_info->target_wwpn, buf3 + 1, 256);
+  {
+    grub_size_t remaining = grub_strlen (buf3 + 1);
+    if (remaining > 255)
+      remaining = 255;
+    grub_memcpy (nvmeof_info->target_wwpn, buf3 + 1, remaining);
+    nvmeof_info->target_wwpn[remaining] = '\0';
+  }
   buf3 = strchr (nvmeof_info->target_wwpn, ',');
   if (buf3)
     *buf3 = '\0';
