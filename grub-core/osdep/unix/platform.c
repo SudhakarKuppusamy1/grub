@@ -195,7 +195,7 @@ add_multiple_nvme_bootdevices (const char *install_device)
   char *multipath_boot, *ofpath, *ext_dir;
   struct dirent *ep, *splitter_ep;
   DIR *dp, *splitter_dp;
-  char *cntl_id, *dirR1, *dirR2, *splitter_info_path;
+  char *cntl_id, *dirR1 = NULL, *dirR2 = NULL, *splitter_info_path;
   bool is_FC = false, is_splitter = false;
 
   nvme_ns = grub_strstr (install_device, "nvme");
@@ -222,6 +222,8 @@ add_multiple_nvme_bootdevices (const char *install_device)
       sysfs_path = tmp;
       is_FC = false;
     }
+  free (ofpath);
+
   if (is_FC == false)
     {
       cntl_id = grub_strstr (nvme_ns, "e");
@@ -229,8 +231,12 @@ add_multiple_nvme_bootdevices (const char *install_device)
 
       splitter_info_path = xasprintf ("/sys/block/%s/device", nvme_ns);
       splitter_dp = opendir (splitter_info_path);
+      free (splitter_info_path);
       if (!splitter_dp)
-        return NULL;
+        {
+          free (dirR1);
+          return NULL;
+        }
 
       while ((splitter_ep = readdir (splitter_dp)) != NULL)
         {
@@ -259,6 +265,8 @@ add_multiple_nvme_bootdevices (const char *install_device)
   if (!dp)
     {
       free (sysfs_path);
+      free (dirR1);
+      free (dirR2);
       return NULL;
     }
 
@@ -297,6 +305,8 @@ add_multiple_nvme_bootdevices (const char *install_device)
   *--ptr = '\0';
   closedir (dp);
   free (sysfs_path);
+  free (dirR1);
+  free (dirR2);
 
   return multipath_boot;
 }
