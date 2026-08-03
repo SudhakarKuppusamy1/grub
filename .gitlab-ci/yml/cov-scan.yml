@@ -14,6 +14,9 @@ bootstrap:
 cov-build:
   stage: build
   extends: .build
+  artifacts:
+    paths:
+      - $COVERITY_DIR
 
 submit:
   stage: submit
