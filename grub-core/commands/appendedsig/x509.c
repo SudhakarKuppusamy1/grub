@@ -834,6 +834,53 @@ x509_cert_parse_der (const void *der_data, grub_int32_t der_data_size, grub_x509
   return ret;
 }
 
+static bool
+x509_cert_cmp (const grub_x509_cert_t *cert1, const grub_x509_cert_t *cert2)
+{
+  if (cert1 == NULL || cert2 == NULL)
+    return false;
+
+  if (cert1->subject == NULL || cert2->subject == NULL ||
+      cert1->issuer == NULL || cert2->issuer == NULL ||
+      cert1->serial == NULL || cert2->serial == NULL)
+    return false;
+
+  if (cert1->subject_len != cert2->subject_len ||
+      cert1->issuer_len != cert2->issuer_len ||
+      cert1->serial_len != cert2->serial_len)
+    return false;
+
+  if (grub_memcmp (cert1->subject, cert2->subject, cert2->subject_len) != 0 ||
+      grub_memcmp (cert1->issuer, cert2->issuer, cert2->issuer_len) != 0 ||
+      grub_memcmp (cert1->serial, cert2->serial, cert2->serial_len) != 0 ||
+      grub_memcmp (cert1->fingerprint[GRUB_FINGERPRINT_SHA256],
+                   cert2->fingerprint[GRUB_FINGERPRINT_SHA256],
+                   sizeof (cert2->fingerprint[GRUB_FINGERPRINT_SHA256])) != 0)
+    return false;
+
+  if ((cert1->spki.pk.modulus != NULL && cert2->spki.pk.modulus != NULL) &&
+      (cert1->spki.pk.exponent != NULL && cert2->spki.pk.exponent != NULL))
+    {
+      if (grub_memcmp (cert1->spki.pk.modulus, cert2->spki.pk.modulus,
+                       sizeof (cert2->spki.pk.modulus)) != 0 ||
+          grub_memcmp (cert1->spki.pk.exponent, cert2->spki.pk.exponent,
+                       sizeof (cert2->spki.pk.exponent)) != 0)
+        return false;
+    }
+  else if ((cert1->spki.pk.raw_len > 0 && cert2->spki.pk.raw_len > 0) &&
+           (cert1->spki.pk.raw != NULL && cert2->spki.pk.raw != NULL))
+    {
+      if (cert1->spki.pk.raw_len != cert2->spki.pk.raw_len ||
+          grub_memcmp (cert1->spki.pk.raw, cert2->spki.pk.raw,
+                       cert2->spki.pk.raw_len) != 0)
+        return false;
+    }
+  else
+    return false;
+
+  return true;
+}
+
 static void
 x509_print_cert (const grub_x509_cert_t *crt)
 {
@@ -887,6 +934,7 @@ x509_cert_free (grub_x509_cert_t *cert)
 static grub_x509_spec_t _grub_x509_spec =
   {
     "X509",
+    x509_cert_cmp,
     x509_print_cert,
     x509_cert_parse_der,
     x509_cert_release,
