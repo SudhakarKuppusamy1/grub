@@ -56,10 +56,61 @@ static const char *codeSigningUsage_oid = "1.3.6.1.5.5.7.3.3";
 static const grub_int32_t extendedKeyUsage_oid_len = 9;
 static const grub_int32_t codeSigningUsage_oid_len = 17;
 
-/* RFC 3279 2.3.1  RSA Keys. */
-static const grub_x509_algo_t pk_algo = {"rsaEncryption", "rsa", "1.2.840.113549.1.1.1",
-                                         20, &grub_pk_rsa_verify};
+/* RFC 3279 2.3.1  RSA Keys and RFC 9881 MLDSA. */
+static const grub_x509_algo_t pk_algos[] =
+{
+  {"rsaEncryption", "rsa", "1.2.840.113549.1.1.1", 20, &grub_pk_rsa_verify},
+  {"ML-DSA-44", "dilithium2", "2.16.840.1.101.3.4.3.17", 23, &grub_pk_mldsa_verify},
+  {"ML-DSA-65", "dilithium3", "2.16.840.1.101.3.4.3.18", 23, &grub_pk_mldsa_verify},
+  {"ML-DSA-87", "dilithium5", "2.16.840.1.101.3.4.3.19", 23, &grub_pk_mldsa_verify}
+};
+
 static const grub_int32_t rsa_key[] = {2048, 3072, 4096};
+static const grub_int32_t mldsa_key[] = {1312*8, 1952*8, 2592*8};
+
+static bool
+x509_is_mldsa_algo (const char *algo_oid, const grub_int32_t algo_oid_len)
+{
+  grub_size_t i;
+
+  for (i = 1; i < sizeof (pk_algos)/sizeof(pk_algos[0]); i++)
+     {
+       if (pk_algos[i].oid_len == algo_oid_len &&
+           grub_strncmp (algo_oid, pk_algos[i].oid, pk_algos[i].oid_len) == 0)
+         return true;
+     }
+
+  return false;
+}
+
+static bool
+x509_is_valid_pkalgo (const char *algo_oid, const grub_int32_t algo_oid_len)
+{
+  grub_size_t i;
+
+  for (i = 0; i < sizeof (pk_algos)/sizeof(pk_algos[0]); i++)
+     {
+       if (pk_algos[i].oid_len == algo_oid_len &&
+           grub_strncmp (algo_oid, pk_algos[i].oid,  pk_algos[i].oid_len) == 0)
+         return true;
+     }
+
+  return false;
+}
+
+static bool
+x509_is_valid_mldsa_key (const grub_int32_t key_size)
+{
+  grub_size_t i;
+
+  for (i = 0; i < sizeof (mldsa_key)/sizeof(mldsa_key[0]); i++)
+     {
+       if (key_size == mldsa_key[i])
+         return true;
+     }
+
+  return false;
+}
 
 static bool
 x509_is_valid_rsa_key (const grub_int32_t m_size, const grub_int32_t e_size)
@@ -417,7 +468,7 @@ static grub_err_t
 x509_get_subject_public_key (asn1_node cert_asn1, grub_x509_cert_t *cert)
 {
   grub_int32_t rc;
-  grub_err_t ret;
+  grub_err_t ret = GRUB_ERR_NONE;
   const char *algo_name = "tbsCertificate.subjectPublicKeyInfo.algorithm.algorithm";
   const char *params_name = "tbsCertificate.subjectPublicKeyInfo.algorithm.parameters";
   const char *pk_name = "tbsCertificate.subjectPublicKeyInfo.subjectPublicKey";
@@ -428,6 +479,7 @@ x509_get_subject_public_key (asn1_node cert_asn1, grub_x509_cert_t *cert)
   grub_uint8_t *key_data = NULL;
   grub_int32_t key_size = 0;
   grub_uint32_t key_type;
+  grub_size_t i;
 
   /* Algorithm: see notes for rsaEncryption_oid. */
   rc = asn1_read_value (cert_asn1, algo_name, algo_oid, &algo_size);
@@ -435,26 +487,36 @@ x509_get_subject_public_key (asn1_node cert_asn1, grub_x509_cert_t *cert)
     return grub_error (GRUB_ERR_BAD_FILE_TYPE, "error reading x509 public key algorithm: %s",
                        ((rc != ASN1_SUCCESS) ? asn1_strerror (rc) : "contains zero bytes"));
 
-  if (pk_algo.oid_len != algo_size - 1 ||
-      grub_strncmp (algo_oid, pk_algo.oid, pk_algo.oid_len) != 0)
+  if (x509_is_valid_pkalgo (algo_oid, algo_size - 1) == false)
     return grub_error (GRUB_ERR_NOT_IMPLEMENTED_YET,
                        "unsupported x509 public key algorithm: %s", algo_oid);
 
-  grub_memcpy (&cert->spki.pk_algo, &pk_algo, sizeof (pk_algo));
+  for (i = 0; i < sizeof (pk_algos)/sizeof(pk_algos[0]); i++)
+    {
+      if (pk_algos[i].oid_len == algo_size - 1 &&
+          grub_strncmp (algo_oid, pk_algos[i].oid,  pk_algos[i].oid_len) == 0)
+        {
+          grub_memcpy (&cert->spki.pk_algo, &pk_algos[i], sizeof (pk_algos[i]));
+          break;
+        }
+    }
 
-  /*
-   * RFC 3279 2.3.1 : The rsaEncryption OID is intended to be used in the
-   * algorithm field of a value of type AlgorithmIdentifier. The parameters
-   * field MUST have ASN.1 type NULL for this algorithm identifier.
-   */
-  rc = asn1_read_value (cert_asn1, params_name, params_value, &params_size);
-  if (rc != ASN1_SUCCESS || params_size == 0)
-    return grub_error (GRUB_ERR_BAD_FILE_TYPE, "error reading x509 public key parameters: %s",
-                       ((rc != ASN1_SUCCESS) ? asn1_strerror (rc) : "contains zero bytes"));
+  if (x509_is_mldsa_algo (algo_oid, algo_size - 1) == false)
+    {
+      /*
+       * RFC 3279 2.3.1 : The rsaEncryption OID is intended to be used in the
+       * algorithm field of a value of type AlgorithmIdentifier. The parameters
+       * field MUST have ASN.1 type NULL for this algorithm identifier.
+       */
+      rc = asn1_read_value (cert_asn1, params_name, params_value, &params_size);
+      if (rc != ASN1_SUCCESS || params_size == 0)
+        return grub_error (GRUB_ERR_BAD_FILE_TYPE, "error reading x509 public key parameters: %s",
+                           ((rc != ASN1_SUCCESS) ? asn1_strerror (rc) : "contains zero bytes"));
 
-  if (params_value[0] != ASN1_TAG_NULL)
-    return grub_error (GRUB_ERR_BAD_FILE_TYPE,
-                       "invalid x509 public key parameters: expected NULL");
+      if (params_value[0] != ASN1_TAG_NULL)
+        return grub_error (GRUB_ERR_BAD_FILE_TYPE,
+                           "invalid x509 public key parameters: expected NULL");
+    }
 
   /*
    * RFC 3279 2.3.1:  The DER encoded RSAPublicKey is the value of the BIT
@@ -485,8 +547,27 @@ x509_get_subject_public_key (asn1_node cert_asn1, grub_x509_cert_t *cert)
     }
 
   key_size = (key_size + 7) / 8;
-  ret = x509_get_rsa_pubkey (key_data, key_size, cert);
-  grub_free (key_data);
+  if (x509_is_mldsa_algo (algo_oid, algo_size - 1) == false)
+    {
+      ret = x509_get_rsa_pubkey (key_data, key_size, cert);
+      grub_free (key_data);
+    }
+  else
+    {
+      cert->spki.pk.raw_len = key_size;
+      /* Key size byte to bits. */
+      key_size = key_size * 8;
+      if (x509_is_valid_mldsa_key (key_size) == false)
+        {
+          grub_free (key_data);
+          return grub_error (GRUB_ERR_NOT_IMPLEMENTED_YET,
+		             "unsupported %s public key: %d",
+                             cert->spki.pk_algo.name, key_size);
+        }
+
+      cert->spki.pk.raw = key_data;
+      cert->spki.pk_len = key_size;
+    }
 
   return ret;
 }
@@ -819,6 +900,7 @@ x509_cert_parse_der (const void *der_data, grub_int32_t der_data_size, grub_x509
   return GRUB_ERR_NONE;
 
  cleanup_pk:
+  grub_free (cert->spki.pk.raw);
   _gcry_mpi_release (cert->spki.pk.modulus);
   _gcry_mpi_release (cert->spki.pk.exponent);
  cleanup_exit:
@@ -870,10 +952,6 @@ x509_cert_cmp (const grub_x509_cert_t *cert1, const grub_x509_cert_t *cert2)
       cert1->serial == NULL || cert2->serial == NULL)
     return false;
 
-  if (cert1->spki.pk.modulus == NULL || cert2->spki.pk.modulus  == NULL ||
-      cert1->spki.pk.exponent == NULL || cert2->spki.pk.exponent == NULL)
-    return false;
-
   if (cert1->fingerprint[GRUB_FINGERPRINT_SHA256] == NULL ||
       cert2->fingerprint[GRUB_FINGERPRINT_SHA256] == NULL)
     return false;
@@ -888,8 +966,22 @@ x509_cert_cmp (const grub_x509_cert_t *cert1, const grub_x509_cert_t *cert2)
       grub_memcmp (cert1->serial, cert2->serial, cert2->serial_len) != 0)
     return false;
 
-  if (_gcry_mpi_cmp (cert1->spki.pk.modulus, cert2->spki.pk.modulus) != 0 ||
-      _gcry_mpi_cmp (cert1->spki.pk.exponent, cert2->spki.pk.exponent) != 0)
+  if ((cert1->spki.pk.modulus != NULL && cert2->spki.pk.modulus  != NULL) &&
+      (cert1->spki.pk.exponent != NULL && cert2->spki.pk.exponent != NULL))
+    {
+      if (_gcry_mpi_cmp (cert1->spki.pk.modulus, cert2->spki.pk.modulus) != 0 ||
+          _gcry_mpi_cmp (cert1->spki.pk.exponent, cert2->spki.pk.exponent) != 0)
+        return false;
+    }
+  else if ((cert1->spki.pk.raw_len > 0 &&
+            cert1->spki.pk.raw_len == cert2->spki.pk.raw_len) &&
+           (cert1->spki.pk.raw != NULL && cert2->spki.pk.raw  != NULL))
+    {
+      if (grub_memcmp (cert1->spki.pk.raw, cert2->spki.pk.raw,
+                       cert2->spki.pk.raw_len) != 0)
+        return false;
+    }
+  else
     return false;
 
   if (x509_fp_cmp (cert1->fingerprint[GRUB_FINGERPRINT_SHA256],
@@ -936,6 +1028,7 @@ x509_cert_release (grub_x509_cert_t *cert)
   grub_free (cert->issuer);
   grub_free (cert->subject);
   grub_free (cert->serial);
+  grub_free (cert->spki.pk.raw);
   _gcry_mpi_release (cert->spki.pk.modulus);
   _gcry_mpi_release (cert->spki.pk.exponent);
   grub_free (cert->fingerprint[GRUB_FINGERPRINT_SHA256]);
