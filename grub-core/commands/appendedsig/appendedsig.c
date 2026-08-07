@@ -281,19 +281,35 @@ is_x509 (const grub_packed_guid_t *guid)
 static bool
 is_cert_match (const grub_x509_cert_t *cert1, const grub_x509_cert_t *cert2)
 {
-  if (grub_memcmp (cert1->subject, cert2->subject, cert2->subject_len) == 0
-      && grub_memcmp (cert1->issuer, cert2->issuer, cert2->issuer_len) == 0
-      && grub_memcmp (cert1->serial, cert2->serial, cert2->serial_len) == 0
-      && grub_memcmp (cert1->spki.pk.modulus, cert2->spki.pk.modulus,
-                      sizeof (cert2->spki.pk.modulus)) == 0
-      && grub_memcmp (cert1->spki.pk.exponent, cert2->spki.pk.exponent,
-                      sizeof (cert2->spki.pk.exponent)) == 0
-      && grub_memcmp (cert1->fingerprint[GRUB_FINGERPRINT_SHA256],
-                      cert2->fingerprint[GRUB_FINGERPRINT_SHA256],
-                      grub_strlen ((char *) cert2->fingerprint[GRUB_FINGERPRINT_SHA256])) == 0)
-    return true;
+  if (grub_memcmp (cert1->subject, cert2->subject, cert2->subject_len) != 0 ||
+      grub_memcmp (cert1->issuer, cert2->issuer, cert2->issuer_len) != 0 ||
+      grub_memcmp (cert1->serial, cert2->serial, cert2->serial_len) != 0 ||
+      grub_memcmp (cert1->fingerprint[GRUB_FINGERPRINT_SHA256],
+                   cert2->fingerprint[GRUB_FINGERPRINT_SHA256],
+                   sizeof (cert2->fingerprint[GRUB_FINGERPRINT_SHA256])) != 0)
+    return false;
 
-  return false;
+  if ((cert1->spki.pk.modulus != NULL && cert2->spki.pk.modulus != NULL) &&
+      (cert1->spki.pk.exponent != NULL && cert2->spki.pk.exponent != NULL))
+    {
+      if (grub_memcmp (cert1->spki.pk.modulus, cert2->spki.pk.modulus,
+                       sizeof (cert2->spki.pk.modulus)) != 0 ||
+          grub_memcmp (cert1->spki.pk.exponent, cert2->spki.pk.exponent,
+                       sizeof (cert2->spki.pk.exponent)) != 0)
+        return false;
+    }
+  else if ((cert1->spki.pk.raw_len > 0 && cert2->spki.pk.raw_len > 0) &&
+           (cert1->spki.pk.raw != NULL && cert2->spki.pk.raw != NULL))
+    {
+      if (cert1->spki.pk.raw_len != cert2->spki.pk.raw_len ||
+          grub_memcmp (cert1->spki.pk.raw, cert2->spki.pk.raw,
+                       cert2->spki.pk.raw_len) != 0)
+        return false;
+    }
+  else
+    return false;
+
+  return true;
 }
 
 /* Check the certificate hash presence in the dbx list. */

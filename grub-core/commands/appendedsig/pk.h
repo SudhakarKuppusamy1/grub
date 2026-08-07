@@ -30,6 +30,8 @@ struct pubkey
 {
   gcry_mpi_t modulus;
   gcry_mpi_t exponent;
+  grub_uint8_t *raw;
+  grub_int32_t raw_len;
 };
 typedef struct pubkey grub_pk_t;
 
@@ -45,6 +47,18 @@ typedef grub_err_t (*grub_pk_verify_t) (const grub_uint8_t *data,
 /* Prepare the hash and S-expressions (sexp), and perform the signature verification. */
 extern grub_err_t
 grub_pk_rsa_verify (const grub_uint8_t *data, const grub_size_t data_len,
+                    const gcry_md_spec_t *hash, const grub_uint8_t *sig,
+                    const grub_int32_t sig_len, const grub_pk_t *pk,
+                    const char *algo);
+
+/*
+ * Prepare the S-expressions (sexp) for key and signature, and perform the signature
+ * verification.
+ *
+ * Note: For now, only support pure ML-DSA.
+ */
+grub_err_t
+grub_pk_mldsa_verify (const grub_uint8_t *data, const grub_size_t data_len,
                     const gcry_md_spec_t *hash, const grub_uint8_t *sig,
                     const grub_int32_t sig_len, const grub_pk_t *pk,
                     const char *algo);

@@ -55,9 +55,44 @@ static const char *codeSigningUsage_oid = "1.3.6.1.5.5.7.3.3";
 static const grub_int32_t extendedKeyUsage_oid_len = 9;
 static const grub_int32_t codeSigningUsage_oid_len = 17;
 
-/* RFC 3279 2.3.1  RSA Keys. */
-static const grub_pkalgo_t pk_algo = {"rsaEncryption", "rsa", "1.2.840.113549.1.1.1",
-                                      20, &grub_pk_rsa_verify};
+/* RFC 3279 2.3.1  RSA Keys and RFC 9881 MLDSA. */
+static const grub_pkalgo_t pk_algos [] =
+{
+  {"rsaEncryption", "rsa", "1.2.840.113549.1.1.1", 20, &grub_pk_rsa_verify},
+  {"ML-DSA-44", "dilithium2", "2.16.840.1.101.3.4.3.17", 23, &grub_pk_mldsa_verify},
+  {"ML-DSA-65", "dilithium3", "2.16.840.1.101.3.4.3.18", 23, &grub_pk_mldsa_verify},
+  {"ML-DSA-87", "dilithium5", "2.16.840.1.101.3.4.3.19", 23, &grub_pk_mldsa_verify}
+};
+
+static bool
+x509_is_mldsa_algo (const char *algo_oid, const grub_size_t algo_oid_len)
+{
+  grub_size_t i;
+
+  for (i = 1; i < sizeof (pk_algos)/sizeof(pk_algos[0]); i++)
+     {
+       if (pk_algos[i].oid_len == algo_oid_len &&
+           grub_strncmp (algo_oid, pk_algos[i].oid, pk_algos[i].oid_len) == 0)
+         return true;
+     }
+
+  return false;
+}
+
+static bool
+x509_is_valid_pkalgo (const char *algo_oid, const grub_int32_t algo_oid_len)
+{
+  grub_size_t i;
+
+  for (i = 0; i < sizeof (pk_algos)/sizeof(pk_algos[0]); i++)
+     {
+       if (pk_algos[i].oid_len == algo_oid_len &&
+           grub_memcmp (algo_oid, pk_algos[i].oid,  pk_algos[i].oid_len) == 0)
+         return true;
+     }
+
+  return false;
+}
 
 /*
  * RFC 3279 2.3.1
@@ -392,7 +427,7 @@ static grub_err_t
 x509_get_subject_public_key (asn1_node cert_asn1, grub_x509_cert_t *cert)
 {
   grub_int32_t rc;
-  grub_err_t ret;
+  grub_err_t ret = GRUB_ERR_NONE;
   const char *algo_name = "tbsCertificate.subjectPublicKeyInfo.algorithm.algorithm";
   const char *params_name = "tbsCertificate.subjectPublicKeyInfo.algorithm.parameters";
   const char *pk_name = "tbsCertificate.subjectPublicKeyInfo.subjectPublicKey";
@@ -403,6 +438,7 @@ x509_get_subject_public_key (asn1_node cert_asn1, grub_x509_cert_t *cert)
   grub_uint8_t *key_data = NULL;
   grub_int32_t key_size = 0;
   grub_uint32_t key_type;
+  grub_size_t i;
 
   /* Algorithm: see notes for rsaEncryption_oid. */
   rc = asn1_read_value (cert_asn1, algo_name, algo_oid, &algo_size);
@@ -410,26 +446,36 @@ x509_get_subject_public_key (asn1_node cert_asn1, grub_x509_cert_t *cert)
     return grub_error (GRUB_ERR_BAD_FILE_TYPE, "error reading x509 public key algorithm: %s",
                        ((rc != ASN1_SUCCESS) ? asn1_strerror (rc) : "contains zero bytes"));
 
-  if (pk_algo.oid_len != algo_size - 1 ||
-      grub_strncmp (algo_oid, pk_algo.oid, pk_algo.oid_len) != 0)
+  if (x509_is_valid_pkalgo (algo_oid, algo_size - 1) == false)
     return grub_error (GRUB_ERR_NOT_IMPLEMENTED_YET,
                        "unsupported x509 public key algorithm: %s", algo_oid);
 
-  grub_memcpy (&cert->spki.pk_algo, &pk_algo, sizeof (pk_algo));
+  for (i = 0; i < sizeof (pk_algos)/sizeof(pk_algos[0]); i++)
+    {
+      if (pk_algos[i].oid_len == algo_size - 1 &&
+          grub_memcmp (algo_oid, pk_algos[i].oid,  pk_algos[i].oid_len) == 0)
+        {
+          grub_memcpy (&cert->spki.pk_algo, &pk_algos[i], sizeof (pk_algos[i]));
+          break;
+        }
+    }
 
-  /*
-   * RFC 3279 2.3.1 : The rsaEncryption OID is intended to be used in the
-   * algorithm field of a value of type AlgorithmIdentifier. The parameters
-   * field MUST have ASN.1 type NULL for this algorithm identifier.
-   */
-  rc = asn1_read_value (cert_asn1, params_name, params_value, &params_size);
-  if (rc != ASN1_SUCCESS || params_size == 0)
-    return grub_error (GRUB_ERR_BAD_FILE_TYPE, "error reading x509 public key parameters: %s",
-                       ((rc != ASN1_SUCCESS) ? asn1_strerror (rc) : "contains zero bytes"));
+  if (x509_is_mldsa_algo (algo_oid, algo_size - 1) == false)
+    {
+      /*
+       * RFC 3279 2.3.1 : The rsaEncryption OID is intended to be used in the
+       * algorithm field of a value of type AlgorithmIdentifier. The parameters
+       * field MUST have ASN.1 type NULL for this algorithm identifier.
+       */
+      rc = asn1_read_value (cert_asn1, params_name, params_value, &params_size);
+      if (rc != ASN1_SUCCESS || params_size == 0)
+        return grub_error (GRUB_ERR_BAD_FILE_TYPE, "error reading x509 public key parameters: %s",
+                           ((rc != ASN1_SUCCESS) ? asn1_strerror (rc) : "contains zero bytes"));
 
-  if (params_value[0] != ASN1_TAG_NULL)
-    return grub_error (GRUB_ERR_BAD_FILE_TYPE,
-                       "invalid x509 public key parameters: expected NULL");
+      if (params_value[0] != ASN1_TAG_NULL)
+        return grub_error (GRUB_ERR_BAD_FILE_TYPE,
+                           "invalid x509 public key parameters: expected NULL");
+    }
 
   /*
    * RFC 3279 2.3.1:  The DER encoded RSAPublicKey is the value of the BIT
@@ -460,8 +506,16 @@ x509_get_subject_public_key (asn1_node cert_asn1, grub_x509_cert_t *cert)
     }
 
   key_size = (key_size + 7) / 8;
-  ret = x509_get_rsa_pubkey (key_data, key_size, cert);
-  grub_free (key_data);
+  if (x509_is_mldsa_algo (algo_oid, algo_size - 1) == false)
+    {
+      ret = x509_get_rsa_pubkey (key_data, key_size, cert);
+      grub_free (key_data);
+    }
+  else
+    {
+      cert->spki.pk.raw = key_data;
+      cert->spki.pk.raw_len = cert->spki.pk_len = key_size;
+    }
 
   return ret;
 }
@@ -767,6 +821,7 @@ x509_cert_parse_der (const void *der_data, grub_int32_t der_data_size, grub_x509
   return GRUB_ERR_NONE;
 
  cleanup_pk:
+  grub_free (cert->spki.pk.raw);
   _gcry_mpi_release (cert->spki.pk.modulus);
   _gcry_mpi_release (cert->spki.pk.exponent);
  cleanup_exit:
@@ -816,6 +871,7 @@ x509_cert_release (grub_x509_cert_t *cert)
   grub_free (cert->issuer);
   grub_free (cert->subject);
   grub_free (cert->serial);
+  grub_free (cert->spki.pk.raw);
   _gcry_mpi_release (cert->spki.pk.modulus);
   _gcry_mpi_release (cert->spki.pk.exponent);
   grub_memset (cert, 0x00, sizeof (grub_x509_cert_t));
