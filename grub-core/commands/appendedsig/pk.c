@@ -91,3 +91,54 @@ grub_pk_rsa_verify (const grub_uint8_t *data, const grub_size_t data_len,
 
   return ret;
 }
+
+/*
+ * Prepare the S-expressions (sexp) for key and signature, and perform the signature
+ * verification.
+ *
+ * Note: For now, only support pure ML-DSA.
+ */
+grub_err_t
+grub_pk_mldsa_verify (const grub_uint8_t *data, const grub_size_t data_len,
+                      const gcry_md_spec_t *hash, const grub_uint8_t *sig,
+                      const grub_int32_t sig_len, const grub_pk_t *pk,
+                      const char *algo)
+{
+  grub_size_t errof;
+  gpg_error_t rc;
+  grub_err_t ret = GRUB_ERR_BAD_SIGNATURE;
+  gcry_sexp_t s_pubkey = NULL, s_sig = NULL;
+
+  if (data == NULL || data_len == 0 || sig == NULL || pk == NULL || algo == NULL)
+    return grub_error (GRUB_ERR_BAD_ARGUMENT, "bad input data");
+
+  (void) hash; /* For now, only support pure ML-DSA. So, we can't use this now. */
+
+  rc = _gcry_sexp_build (&s_pubkey, &errof, "(%s (p %b))", algo, pk->raw_len, pk->raw);
+  if (rc != GPG_ERR_NO_ERROR)
+    {
+      ret = grub_error (ret, "building sexp for public key failed: %s", gpg_strerror (rc));
+      goto exit;
+    }
+
+  rc = _gcry_sexp_build (&s_sig, &errof, "(sig-val (%s (s %b)))", algo, sig_len, sig);
+  if (rc != GPG_ERR_NO_ERROR)
+    {
+      ret = grub_error (ret, "building sexp for signature failed: %s", gpg_strerror (rc));
+      goto exit;
+    }
+
+  rc = (grub_crypto_pk_mldsa != NULL && grub_crypto_pk_mldsa->raw_verify != NULL ?
+        grub_crypto_pk_mldsa->raw_verify (s_sig, s_pubkey, data, data_len, NULL, 0) :
+        GPG_ERR_INV_OBJ);
+  if (rc != GPG_ERR_NO_ERROR)
+    ret = grub_error (ret, "ML-DSA verify failed: %s", gpg_strerror (rc));
+  else
+    ret = GRUB_ERR_NONE;
+
+ exit:
+  _gcry_sexp_release (s_sig);
+  _gcry_sexp_release (s_pubkey);
+
+  return ret;
+}
