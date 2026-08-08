@@ -209,7 +209,7 @@ print_certificate (const grub_x509_cert_t *cert, const grub_uint32_t cert_num)
   grub_printf ("                RSA Public-Key: (%d bit)\n", cert->modulus_size);
   grub_printf ("    Fingerprint: sha256\n         ");
   hexdump_colon (&cert->fingerprint[GRUB_FINGERPRINT_SHA256][0],
-                 grub_strlen ((char *) cert->fingerprint[GRUB_FINGERPRINT_SHA256]));
+                 SHA256_HASH_SIZE);
 }
 
 /*
@@ -243,32 +243,9 @@ get_hash (const grub_packed_guid_t *guid, const grub_uint8_t *data, const grub_s
   return GRUB_ERR_NONE;
 }
 
-static grub_err_t
-generate_cert_hash (const grub_size_t cert_hash_size, const grub_uint8_t *data,
-                    const grub_size_t data_size, grub_uint8_t *hash, grub_size_t *hash_size)
-{
-  grub_packed_guid_t guid = { 0 };
-
-  /* support SHA256, SHA384 and SHA512 for certificate hash */
-  if (cert_hash_size == SHA256_HASH_SIZE)
-    grub_memcpy (&guid, &GRUB_PKS_CERT_X509_SHA256_GUID, GRUB_PACKED_GUID_SIZE);
-  else if (cert_hash_size == SHA384_HASH_SIZE)
-    grub_memcpy (&guid, &GRUB_PKS_CERT_X509_SHA384_GUID, GRUB_PACKED_GUID_SIZE);
-  else if (cert_hash_size == SHA512_HASH_SIZE)
-    grub_memcpy (&guid, &GRUB_PKS_CERT_X509_SHA512_GUID, GRUB_PACKED_GUID_SIZE);
-  else
-    {
-      grub_dprintf ("appendedsig", "unsupported hash type (%" PRIuGRUB_SIZE ") and "
-                    "skipped\n", cert_hash_size);
-      return GRUB_ERR_UNKNOWN_COMMAND;
-    }
-
-  return get_hash (&guid, data, data_size, hash, hash_size);
-}
-
 /* Check the hash presence in the db/dbx list. */
 static bool
-check_hash_presence (grub_uint8_t *const hash, const grub_size_t hash_size,
+check_hash_presence (const grub_uint8_t *const hash, const grub_size_t hash_size,
                      const sb_database_t *sb_database)
 {
   grub_uint32_t i;
@@ -286,9 +263,102 @@ check_hash_presence (grub_uint8_t *const hash, const grub_size_t hash_size,
   return false;
 }
 
+static bool
+cert_fingerprint_match (const grub_uint8_t *hash_data, const grub_size_t hash_data_size,
+                        const grub_x509_cert_t *cert)
+{
+  grub_int32_t type;
+
+  if (cert == NULL || hash_data == NULL || hash_data_size == 0)
+    return false;
+
+  if (hash_data_size == SHA256_HASH_SIZE)
+    type = GRUB_FINGERPRINT_SHA256;
+  else if (hash_data_size == SHA384_HASH_SIZE)
+    type = GRUB_FINGERPRINT_SHA384;
+  else if (hash_data_size == SHA512_HASH_SIZE)
+    type = GRUB_FINGERPRINT_SHA512;
+  else
+    {
+      grub_dprintf ("appendedsig", "unsupported fingerprint hash type "
+                    "(%" PRIuGRUB_SIZE ") \n", hash_data_size);
+      return false;
+    }
+
+  if (grub_memcmp (cert->fingerprint[type], hash_data, hash_data_size) == 0)
+    return true;
+
+  return false;
+}
+
+static bool
+is_cert_match (const grub_x509_cert_t *cert1, const grub_x509_cert_t *cert2)
+{
+  if (grub_memcmp (cert1->subject, cert2->subject, cert2->subject_len) == 0
+      && grub_memcmp (cert1->issuer, cert2->issuer, cert2->issuer_len) == 0
+      && grub_memcmp (cert1->serial, cert2->serial, cert2->serial_len) == 0
+      && _gcry_mpi_cmp (cert1->mpis[GRUB_RSA_PK_MODULUS],
+                        cert2->mpis[GRUB_RSA_PK_MODULUS]) == 0
+      && _gcry_mpi_cmp (cert1->mpis[GRUB_RSA_PK_EXPONENT],
+                        cert2->mpis[GRUB_RSA_PK_EXPONENT]) == 0
+      && cert_fingerprint_match (cert1->fingerprint[GRUB_FINGERPRINT_SHA256],
+                                 SHA256_HASH_SIZE, cert2) == true)
+    return true;
+
+  return false;
+}
+
+/* Check the certificate presence in the db/dbx list. */
+static bool
+check_cert_presence (const grub_x509_cert_t *cert_in, const sb_database_t *sb_database)
+{
+  grub_x509_cert_t *cert;
+
+  for (cert = sb_database->certs; cert != NULL; cert = cert->next)
+    if (is_cert_match (cert, cert_in) == true)
+      return true;
+
+  return false;
+}
+
+/* Check the certificate/ certificate hash presence in the dbx list. */
+static bool
+check_aginst_dbx (const grub_x509_cert_t *key, grub_uint8_t const *hash,
+                  const grub_size_t hash_size, const bool is_hash)
+{
+  const grub_x509_cert_t *cert;
+
+  if (is_hash == true && hash != NULL && hash_size > 0)
+    {
+      if (check_hash_presence (hash, hash_size, &dbx) == true)
+        return true;
+
+      for (cert = dbx.certs; cert != NULL; cert = cert->next)
+        if (cert_fingerprint_match (hash, hash_size, cert) == true)
+          return true;
+    }
+
+  if (is_hash == false && key != NULL)
+    {
+      if (check_cert_presence (key, &dbx) == true)
+        return true;
+
+      if (check_hash_presence (key->fingerprint[GRUB_FINGERPRINT_SHA256],
+                               SHA256_HASH_SIZE, &dbx) == true ||
+          check_hash_presence (key->fingerprint[GRUB_FINGERPRINT_SHA384],
+                               SHA384_HASH_SIZE, &dbx) == true ||
+          check_hash_presence (key->fingerprint[GRUB_FINGERPRINT_SHA512],
+                               SHA512_HASH_SIZE, &dbx) == true)
+        return true;
+    }
+
+  return false;
+}
+
 /* Add the certificate/binary hash into the db/dbx list. */
 static grub_err_t
-add_hash (grub_uint8_t *const data, const grub_size_t data_size, sb_database_t *sb_database)
+add_hash (grub_uint8_t *const data, const grub_size_t data_size, const bool is_pks,
+          sb_database_t *sb_database)
 {
   grub_uint8_t **hashes;
   grub_size_t *hash_sizes;
@@ -296,9 +366,9 @@ add_hash (grub_uint8_t *const data, const grub_size_t data_size, sb_database_t *
   if (data == NULL || data_size == 0)
     return grub_error (GRUB_ERR_OUT_OF_RANGE, "certificate/binary-hash data or size is not available");
 
-  if (sb_database->is_db == true)
+  if (sb_database->is_db == true && is_pks == false)
     {
-      if (check_hash_presence (data, data_size, &dbx) == true)
+      if (check_aginst_dbx (NULL, data, data_size, true) == true)
         {
           grub_dprintf ("appendedsig",
                         "cannot add a hash (%02x%02x%02x%02x), as it is present in the dbx list\n",
@@ -377,63 +447,6 @@ is_x509 (const grub_packed_guid_t *guid)
 }
 #endif
 
-static bool
-is_cert_match (const grub_x509_cert_t *cert1, const grub_x509_cert_t *cert2)
-{
-  if (grub_memcmp (cert1->subject, cert2->subject, cert2->subject_len) == 0
-      && grub_memcmp (cert1->issuer, cert2->issuer, cert2->issuer_len) == 0
-      && grub_memcmp (cert1->serial, cert2->serial, cert2->serial_len) == 0
-      && grub_memcmp (cert1->mpis[GRUB_RSA_PK_MODULUS], cert2->mpis[GRUB_RSA_PK_MODULUS],
-                      sizeof (cert2->mpis[GRUB_RSA_PK_MODULUS])) == 0
-      && grub_memcmp (cert1->mpis[GRUB_RSA_PK_EXPONENT], cert2->mpis[GRUB_RSA_PK_EXPONENT],
-                      sizeof (cert2->mpis[GRUB_RSA_PK_EXPONENT])) == 0
-      && grub_memcmp (cert1->fingerprint[GRUB_FINGERPRINT_SHA256],
-                      cert2->fingerprint[GRUB_FINGERPRINT_SHA256],
-                      grub_strlen ((char *) cert2->fingerprint[GRUB_FINGERPRINT_SHA256])) == 0)
-    return true;
-
-  return false;
-}
-
-/* Check the certificate hash presence in the dbx list. */
-static bool
-is_cert_hash_present_in_dbx (const grub_uint8_t *data, const grub_size_t data_size)
-{
-  grub_err_t rc;
-  grub_uint32_t i;
-  grub_size_t cert_hash_size = 0;
-  grub_uint8_t cert_hash[GRUB_MAX_HASH_LEN] = { 0 };
-
-  for (i = 0; i < dbx.hash_entries; i++)
-    {
-      if (dbx.hashes[i] == NULL)
-        continue;
-
-      rc = generate_cert_hash (dbx.hash_sizes[i], data, data_size, cert_hash, &cert_hash_size);
-      if (rc != GRUB_ERR_NONE)
-        continue;
-
-      if (cert_hash_size == dbx.hash_sizes[i] &&
-          grub_memcmp (dbx.hashes[i], cert_hash, cert_hash_size) == 0)
-        return true;
-    }
-
-  return false;
-}
-
-/* Check the certificate presence in the db/dbx list. */
-static bool
-check_cert_presence (const grub_x509_cert_t *cert_in, const sb_database_t *sb_database)
-{
-  grub_x509_cert_t *cert;
-
-  for (cert = sb_database->certs; cert != NULL; cert = cert->next)
-    if (is_cert_match (cert, cert_in) == true)
-      return true;
-
-  return false;
-}
-
 /*
  * Add the certificate into the db list if it is not present in the dbx and db
  * list when is_db is true. Add the certificate into the dbx list when is_db is
@@ -441,7 +454,7 @@ check_cert_presence (const grub_x509_cert_t *cert_in, const sb_database_t *sb_da
  */
 static grub_err_t
 add_certificate (const grub_uint8_t *data, const grub_size_t data_size,
-                 sb_database_t *sb_database)
+                 const bool is_pks, sb_database_t *sb_database)
 {
   grub_err_t rc;
   grub_x509_cert_t *cert;
@@ -468,10 +481,9 @@ add_certificate (const grub_uint8_t *data, const grub_size_t data_size,
    */
   if (append_key_mgmt == true)
     {
-      if (sb_database->is_db == true)
+      if (sb_database->is_db == true && is_pks == false)
         {
-          if (is_cert_hash_present_in_dbx (data, data_size) == true ||
-              check_cert_presence (cert, &dbx) == true)
+          if (check_aginst_dbx (cert, NULL, 0, false) == true)
             {
               grub_dprintf ("appendedsig",
                             "cannot add a certificate CN='%s', as it is present in the dbx list",
@@ -528,6 +540,7 @@ _remove_cert_from_db (const grub_x509_cert_t *cert)
           curr_cert->next = NULL;
           grub_x509_cert_release (curr_cert);
           grub_free (curr_cert);
+          db.cert_entries--;
           break;
         }
       else
@@ -560,69 +573,6 @@ remove_cert_from_db (const grub_uint8_t *data, const grub_size_t data_size)
   _remove_cert_from_db (cert);
 
   return rc;
-}
-
-static bool
-cert_fingerprint_match (const grub_uint8_t *hash_data, const grub_size_t hash_data_size,
-                        const grub_x509_cert_t *cert)
-{
-  grub_int32_t type;
-
-  if (hash_data_size == SHA256_HASH_SIZE)
-    type = GRUB_FINGERPRINT_SHA256;
-  else if (hash_data_size == SHA384_HASH_SIZE)
-    type = GRUB_FINGERPRINT_SHA384;
-  else if (hash_data_size == SHA512_HASH_SIZE)
-    type = GRUB_FINGERPRINT_SHA512;
-  else
-    {
-      grub_dprintf ("appendedsig", "unsupported fingerprint hash type "
-                    "(%" PRIuGRUB_SIZE ") \n", hash_data_size);
-      return false;
-    }
-
-  if (grub_memcmp (cert->fingerprint[type], hash_data, hash_data_size) == 0)
-    return true;
-
-  return false;
-}
-
-static void
-remove_hash_from_db (const grub_uint8_t *hash_data, const grub_size_t hash_data_size,
-                     const bool bin_hash)
-{
-  grub_uint32_t i;
-  grub_x509_cert_t *cert;
-
-  if (bin_hash == true)
-    {
-      for (i = 0; i < db.hash_entries; i++)
-        {
-          if (db.hashes[i] == NULL)
-            continue;
-
-          if (grub_memcmp (db.hashes[i], hash_data, hash_data_size) == 0)
-            {
-              grub_dprintf ("appendedsig", "removed distrusted hash %02x%02x%02x%02x.. from the db list\n",
-                            db.hashes[i][0], db.hashes[i][1], db.hashes[i][2], db.hashes[i][3]);
-              grub_free (db.hashes[i]);
-              db.hashes[i] = NULL;
-              db.hash_sizes[i] = 0;
-              break;
-            }
-        }
-    }
-  else
-    {
-      for (cert = db.certs; cert != NULL; cert = cert->next)
-        {
-          if (cert_fingerprint_match (hash_data, hash_data_size, cert) == true)
-            {
-              _remove_cert_from_db (cert);
-              break;
-            }
-        }
-    }
 }
 
 static grub_err_t
@@ -831,7 +781,7 @@ verify_signature (const gcry_mpi_t *pkmpi, const gcry_mpi_t hmpi,
 static grub_err_t
 grub_verify_appended_signature (const grub_uint8_t *buf, grub_size_t bufsize)
 {
-  grub_err_t err;
+  grub_err_t err = GRUB_ERR_BAD_SIGNATURE, ret;
   grub_size_t datasize;
   void *context;
   grub_uint8_t *hash;
@@ -839,16 +789,18 @@ grub_verify_appended_signature (const grub_uint8_t *buf, grub_size_t bufsize)
   sb_appendedsig_t sig;
   grub_pkcs7_signer_t *si;
   grub_int32_t i;
+  bool found_in_dbx = false;
 
   if (!db.cert_entries && !db.hash_entries)
     return grub_error (GRUB_ERR_BAD_SIGNATURE, "no trusted keys to verify against");
 
-  err = extract_appended_signature (buf, bufsize, &sig);
-  if (err != GRUB_ERR_NONE)
-    return err;
+  ret = extract_appended_signature (buf, bufsize, &sig);
+  if (ret != GRUB_ERR_NONE)
+    return ret;
 
   append_sig_len = sig.signature_len;
   datasize = bufsize - sig.signature_len;
+  ret = GRUB_ERR_BAD_SIGNATURE;
 
   /*
    * If signature verification is enabled with dynamic key management mode,
@@ -883,11 +835,19 @@ grub_verify_appended_signature (const grub_uint8_t *buf, grub_size_t bufsize)
 
       for (pk = db.certs; pk != NULL; pk = pk->next)
         {
-          err = verify_signature (pk->mpis, si->sig_mpi, si->hash, hash);
-          if (err == GRUB_ERR_NONE)
+          ret = verify_signature (pk->mpis, si->sig_mpi, si->hash, hash);
+          if (ret == GRUB_ERR_NONE)
             {
-              grub_dprintf ("appendedsig", "verify signer %d with key '%s' succeeded\n",
-                            i, pk->subject);
+              if (append_key_mgmt == true && check_aginst_dbx (pk, NULL, 0, false) == true)
+	        {
+                  ret = GRUB_ERR_BAD_SIGNATURE;
+		  found_in_dbx = true;
+                  grub_dprintf ("appendedsig", "key '%s' present in the dbx list\n",
+                                pk->subject);
+                }
+              else
+                grub_dprintf ("appendedsig", "verify signer %d with key '%s' succeeded\n",
+                              i, pk->subject);
               break;
             }
 
@@ -896,16 +856,17 @@ grub_verify_appended_signature (const grub_uint8_t *buf, grub_size_t bufsize)
         }
 
       grub_free (context);
-      if (err == GRUB_ERR_NONE)
+      if (ret == GRUB_ERR_NONE)
         break;
     }
 
   grub_pkcs7_data_release (&sig.pkcs7);
 
-  if (err != GRUB_ERR_NONE)
-    return grub_error (err, "failed to verify signature against a trusted key");
+  if (ret == GRUB_ERR_NONE ||
+      ((ret != GRUB_ERR_NONE && found_in_dbx == false) && err == GRUB_ERR_NONE))
+    return GRUB_ERR_NONE;
 
-  return err;
+  return grub_error (ret, "failed to verify signature against a trusted key");
 }
 
 static grub_err_t
@@ -991,16 +952,16 @@ grub_cmd_db_cert (grub_command_t cmd __attribute__ ((unused)), int argc, char **
   if (check_sigs == true)
     cert_data_size -= append_sig_len;
 
-  err = add_certificate (cert_data, cert_data_size, &db);
+  err = add_certificate (cert_data, cert_data_size, false, &db);
   grub_free (cert_data);
 
   return err;
 }
 
 /*
- * Remove the distrusted certificate from the db list if it is already present.
- * And add it to the dbx list if not present when dynamic key management is
- * enabled.
+ * Add the distrusted certificate to the dbx list if not present when dynamic key
+ * management is enabled. Remove the distrusted certificate from the db list and
+ * will not add it to the dbx list when static key management is enabled
  *
  * Note: When signature verification is enabled, this command only accepts the
  * distrusted certificate that is signed with an appended signature.
@@ -1010,7 +971,7 @@ grub_cmd_db_cert (grub_command_t cmd __attribute__ ((unused)), int argc, char **
  * When signature verification is disabled, it accepts the distrusted certificate
  * without an appended signature and removes it from the db list.
  *
- * Also, note that the removal of the distrusted certificate using this command
+ * Also, note that the adding of the distrusted certificate using this command
  * does not persist across reboots.
  */
 static grub_err_t
@@ -1048,17 +1009,19 @@ grub_cmd_dbx_cert (grub_command_t cmd __attribute__ ((unused)), int argc, char *
   if (check_sigs == true)
     cert_data_size -= append_sig_len;
 
-  /* Remove distrusted certificate from the db list if present. */
-  err = remove_cert_from_db (cert_data, cert_data_size);
-  if (err != GRUB_ERR_NONE)
-    {
-      grub_free (cert_data);
-      return err;
-    }
-
   /* Only add the certificate to the dbx list if dynamic key management is enabled. */
   if (append_key_mgmt == true)
-    err = add_certificate (cert_data, cert_data_size, &dbx);
+    err = add_certificate (cert_data, cert_data_size, false, &dbx);
+  else
+    {
+      /* Remove distrusted certificate from the db list if present. */
+      err = remove_cert_from_db (cert_data, cert_data_size);
+      if (err != GRUB_ERR_NONE)
+        {
+          grub_free (cert_data);
+          return err;
+        }
+    }
 
   grub_free (cert_data);
 
@@ -1119,8 +1082,8 @@ grub_cmd_list_dbx (grub_command_t cmd __attribute__((unused)),
 }
 
 /*
- * Remove the trusted binary hash from the dbx list if present. And add them to
- * the db list if it is not already present.
+ * Checks the trusted binary hash against dbx list and add them to the db list if
+ * it is not already present.
  *
  * Note: When signature verification is enabled, this command only accepts the
  * binary hash file that is signed with an appended signature. The signature is
@@ -1183,15 +1146,14 @@ grub_cmd_add_db_hash (grub_command_t cmd __attribute__((unused)), int argc, char
       return grub_error (GRUB_ERR_BAD_SIGNATURE, "unacceptable trusted binary hash type");
     }
 
-  rc = add_hash (hash_data, hash_data_size, &db);
+  rc = add_hash (hash_data, hash_data_size, false, &db);
   grub_free (hash_data);
 
   return rc;
 }
 
 /*
- * Remove the distrusted binary/certificate hash from the db list if present.
- * And add them to the dbx list if it is not already present.
+ * Add the distrusted binary/certificate hash to the dbx if it is not already present.
  *
  * Note: When signature verification is enabled, this command only accepts the
  * binary/certificate hash file that is signed with an appended signature. The
@@ -1268,10 +1230,7 @@ grub_cmd_add_dbx_hash (grub_extcmd_context_t ctxt, int argc __attribute__ ((unus
         }
     }
 
-  /* Remove distrusted binary hash/certificate from the db list if present. */
-  remove_hash_from_db (hash_data, hash_data_size,
-                       (ctxt->state[OPTION_BINARY_HASH].set) ? true : false);
-  rc = add_hash (hash_data, hash_data_size, &dbx);
+  rc = add_hash (hash_data, hash_data_size, false, &dbx);
   grub_free (hash_data);
 
   return rc;
@@ -1290,14 +1249,14 @@ load_pks2db (void)
       if (is_hash (&pks_keystore->db[i].guid) == true)
         {
           rc = add_hash (pks_keystore->db[i].data,
-                         pks_keystore->db[i].data_size, &db);
+                         pks_keystore->db[i].data_size, true, &db);
           if (rc == GRUB_ERR_OUT_OF_MEMORY)
             return rc;
         }
       else if (is_x509 (&pks_keystore->db[i].guid) == true)
         {
           rc = add_certificate (pks_keystore->db[i].data,
-                                pks_keystore->db[i].data_size, &db);
+                                pks_keystore->db[i].data_size, true, &db);
           if (rc == GRUB_ERR_OUT_OF_MEMORY)
             return rc;
         }
@@ -1321,14 +1280,14 @@ load_pks2dbx (void)
       if (is_x509 (&pks_keystore->dbx[i].guid) == true)
         {
           rc = add_certificate (pks_keystore->dbx[i].data,
-                                pks_keystore->dbx[i].data_size, &dbx);
+                                pks_keystore->dbx[i].data_size, true, &dbx);
           if (rc == GRUB_ERR_OUT_OF_MEMORY)
             return rc;
         }
       else if (is_hash (&pks_keystore->dbx[i].guid) == true)
         {
           rc = add_hash (pks_keystore->dbx[i].data,
-                         pks_keystore->dbx[i].data_size, &dbx);
+                         pks_keystore->dbx[i].data_size, true, &dbx);
           if (rc != GRUB_ERR_NONE)
             return rc;
         }
@@ -1374,7 +1333,7 @@ load_elf2db (void)
       else if (err != GRUB_ERR_NONE)
         continue;
 
-      err = add_certificate (cert_data, cert_data_size, &db);
+      err = add_certificate (cert_data, cert_data_size, true, &db);
       grub_free (cert_data);
       if (err == GRUB_ERR_OUT_OF_MEMORY)
         return;
