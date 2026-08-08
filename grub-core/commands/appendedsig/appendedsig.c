@@ -812,7 +812,8 @@ grub_verify_appended_signature (const grub_uint8_t *buf, grub_size_t bufsize)
   grub_int32_t i = 0;
 
   if (!db.no_of_certs && !db.no_of_hashes)
-    return grub_error (GRUB_ERR_BAD_SIGNATURE, "no trusted keys to verify against");
+    return grub_error (GRUB_ERR_BAD_SIGNATURE, "no trusted keys%s to verify against",
+                       (append_key_mgmt == true ?"/hashes" : ""));
 
   err = extract_appended_signature (buf, bufsize, &sig);
   if (err != GRUB_ERR_NONE)
@@ -833,6 +834,11 @@ grub_verify_appended_signature (const grub_uint8_t *buf, grub_size_t bufsize)
           grub_pkcs7_spec->release (&sig.pkcs7);
           return grub_error (err,
                              "failed to verify the binary hash against a trusted binary hash");
+        }
+      else if (err == GRUB_ERR_NONE)
+        {
+          grub_pkcs7_spec->release (&sig.pkcs7);
+          return err;
         }
     }
 
