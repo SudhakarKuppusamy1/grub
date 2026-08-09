@@ -81,6 +81,15 @@ struct x509_cert
 };
 typedef struct x509_cert grub_x509_cert_t;
 
+/* Type for the x509_fp_cmp function.  */
+typedef bool (*grub_x509_fp_cmp_t) (const grub_uint8_t *hash_data,
+                                    const grub_size_t hash_data_size,
+                                    const grub_x509_cert_t *cert);
+
+/* Type for the x509_cert_cmp function.  */
+typedef bool (*grub_x509_cert_cmp_t) (const grub_x509_cert_t *cert1,
+                                      const grub_x509_cert_t *cert2);
+
 /* Type for the x509_cert_print function.  */
 typedef void (*grub_x509_print_t) (const grub_x509_cert_t *crt);
 
@@ -98,6 +107,8 @@ typedef void (*grub_x509_free_t) (grub_x509_cert_t *cert);
 typedef struct x509_spec
 {
   const char *name;
+  grub_x509_fp_cmp_t fp_cmp;
+  grub_x509_cert_cmp_t cert_cmp;
   grub_x509_print_t print;
   grub_x509_parse_t parse_der;
   grub_x509_release_t release;

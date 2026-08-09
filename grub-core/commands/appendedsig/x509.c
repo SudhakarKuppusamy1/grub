@@ -830,6 +830,74 @@ x509_cert_parse_der (const void *der_data, grub_int32_t der_data_size, grub_x509
   return ret;
 }
 
+static bool
+x509_fp_cmp (const grub_uint8_t *hash_data, const grub_size_t hash_data_size,
+             const grub_x509_cert_t *cert)
+{
+  grub_int32_t type;
+
+  if (cert == NULL || hash_data == NULL || hash_data_size == 0)
+    return false;
+
+  if (hash_data_size == SHA256_HASH_SIZE)
+    type = GRUB_FINGERPRINT_SHA256;
+  else if (hash_data_size == SHA384_HASH_SIZE)
+    type = GRUB_FINGERPRINT_SHA384;
+  else if (hash_data_size == SHA512_HASH_SIZE)
+    type = GRUB_FINGERPRINT_SHA512;
+  else
+    {
+      grub_dprintf ("appendedsig", "unsupported fingerprint hash type "
+                    "(%" PRIuGRUB_SIZE ") \n", hash_data_size);
+      return false;
+    }
+
+  if (grub_memcmp (cert->fingerprint[type], hash_data, hash_data_size) == 0)
+    return true;
+
+  return false;
+}
+
+static bool
+x509_cert_cmp (const grub_x509_cert_t *cert1, const grub_x509_cert_t *cert2)
+{
+  if (cert1 == NULL || cert2 == NULL)
+    return false;
+
+  if (cert1->subject == NULL || cert2->subject == NULL ||
+      cert1->issuer == NULL || cert2->issuer == NULL ||
+      cert1->serial == NULL || cert2->serial == NULL)
+    return false;
+
+  if (cert1->spki.pk.modulus == NULL || cert2->spki.pk.modulus  == NULL ||
+      cert1->spki.pk.exponent == NULL || cert2->spki.pk.exponent == NULL)
+    return false;
+
+  if (cert1->fingerprint[GRUB_FINGERPRINT_SHA256] == NULL ||
+      cert2->fingerprint[GRUB_FINGERPRINT_SHA256] == NULL)
+    return false;
+
+  if (cert1->subject_len != cert2->subject_len ||
+      cert1->issuer_len != cert2->issuer_len ||
+      cert1->serial_len != cert2->serial_len)
+    return false;
+
+  if (grub_memcmp (cert1->subject, cert2->subject, cert2->subject_len) != 0 ||
+      grub_memcmp (cert1->issuer, cert2->issuer, cert2->issuer_len) != 0 ||
+      grub_memcmp (cert1->serial, cert2->serial, cert2->serial_len) != 0)
+    return false;
+
+  if (_gcry_mpi_cmp (cert1->spki.pk.modulus, cert2->spki.pk.modulus) != 0 ||
+      _gcry_mpi_cmp (cert1->spki.pk.exponent, cert2->spki.pk.exponent) != 0)
+    return false;
+
+  if (x509_fp_cmp (cert1->fingerprint[GRUB_FINGERPRINT_SHA256],
+                   SHA256_HASH_SIZE, cert2) == false)
+    return false;
+
+  return true;
+}
+
 static void
 x509_cert_print (const grub_x509_cert_t *crt)
 {
@@ -885,6 +953,8 @@ x509_cert_free (grub_x509_cert_t *cert)
 static grub_x509_spec_t _grub_x509_spec =
   {
     "X509",
+    x509_fp_cmp,
+    x509_cert_cmp,
     x509_cert_print,
     x509_cert_parse_der,
     x509_cert_release,

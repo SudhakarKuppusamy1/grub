@@ -148,49 +148,6 @@ check_hash_presence (const grub_uint8_t *const hash, const grub_size_t hash_size
   return false;
 }
 
-static bool
-cert_fingerprint_match (const grub_uint8_t *hash_data, const grub_size_t hash_data_size,
-                        const grub_x509_cert_t *cert)
-{
-  grub_int32_t type;
-
-  if (cert == NULL || hash_data == NULL || hash_data_size == 0)
-    return false;
-
-  if (hash_data_size == SHA256_HASH_SIZE)
-    type = GRUB_FINGERPRINT_SHA256;
-  else if (hash_data_size == SHA384_HASH_SIZE)
-    type = GRUB_FINGERPRINT_SHA384;
-  else if (hash_data_size == SHA512_HASH_SIZE)
-    type = GRUB_FINGERPRINT_SHA512;
-  else
-    {
-      grub_dprintf ("appendedsig", "unsupported fingerprint hash type "
-                    "(%" PRIuGRUB_SIZE ") \n", hash_data_size);
-      return false;
-    }
-
-  if (grub_memcmp (cert->fingerprint[type], hash_data, hash_data_size) == 0)
-    return true;
-
-  return false;
-}
-
-static bool
-is_cert_match (const grub_x509_cert_t *cert1, const grub_x509_cert_t *cert2)
-{
-  if (grub_memcmp (cert1->subject, cert2->subject, cert2->subject_len) == 0
-      && grub_memcmp (cert1->issuer, cert2->issuer, cert2->issuer_len) == 0
-      && grub_memcmp (cert1->serial, cert2->serial, cert2->serial_len) == 0
-      && _gcry_mpi_cmp (cert1->spki.pk.modulus, cert2->spki.pk.modulus) == 0
-      && _gcry_mpi_cmp (cert1->spki.pk.exponent, cert2->spki.pk.exponent) == 0
-      && cert_fingerprint_match (cert1->fingerprint[GRUB_FINGERPRINT_SHA256],
-                                 SHA256_HASH_SIZE, cert2) == true)
-    return true;
-
-  return false;
-}
-
 /* Check the certificate presence in the db/dbx list. */
 static bool
 check_cert_presence (const grub_x509_cert_t *cert_in, const grub_append_sd_t *sd)
@@ -198,7 +155,7 @@ check_cert_presence (const grub_x509_cert_t *cert_in, const grub_append_sd_t *sd
   grub_x509_cert_t *cert;
 
   for (cert = sd->certs; cert != NULL; cert = cert->next)
-    if (is_cert_match (cert, cert_in) == true)
+    if (grub_x509_spec->cert_cmp (cert, cert_in) == true)
       return true;
 
   return false;
@@ -217,7 +174,7 @@ check_aginst_dbx (const grub_x509_cert_t *key, grub_uint8_t const *hash,
         return true;
 
       for (cert = dbx.certs; cert != NULL; cert = cert->next)
-        if (cert_fingerprint_match (hash, hash_size, cert) == true)
+        if (grub_x509_spec->fp_cmp (hash, hash_size, cert) == true)
           return true;
     }
 
@@ -405,7 +362,7 @@ _remove_cert_from_db (const grub_x509_cert_t *cert)
 
   for (curr_cert = prev_cert = db.certs; curr_cert != NULL; curr_cert = curr_cert->next, i++)
     {
-      if (is_cert_match (curr_cert, cert) == true)
+      if (grub_x509_spec->cert_cmp (curr_cert, cert) == true)
         {
           if (i == 1) /* Match with first certificate in the db list. */
             db.certs = curr_cert->next;
