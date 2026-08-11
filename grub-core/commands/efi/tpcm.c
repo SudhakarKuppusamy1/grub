@@ -83,7 +83,7 @@ measure_memory (enum grub_file_type type __attribute__((unused)),
         struct c2p_protocol *c2p;
 
         grub_c2p_handle = handles[0];
-        grub_dprintf ("tpcm", "measure memory addr 0x%lx size 0x%lx\n",
+        grub_dprintf ("tpcm", "measure memory addr 0x%zx size 0x%zx\n",
                       addr, size);
         c2p = grub_efi_open_protocol (grub_c2p_handle, &c2p_guid,
                                       GRUB_EFI_OPEN_PROTOCOL_GET_PROTOCOL);
