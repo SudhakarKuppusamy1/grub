@@ -72,7 +72,7 @@ index f46b8ac2f..558fc7010 100644
      NULL, /*run_selftests*/
      mldsa_compute_keygrip
      ,
-+    .raw_verify = mldsa_raw_verify
++    .raw_verify = mldsa_raw_verify,
 +
      GRUB_UTIL_MODNAME("gcry_pubkey_dilithium")
    };
