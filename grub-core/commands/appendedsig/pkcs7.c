@@ -645,6 +645,40 @@ pkcs7_check_aginst_rcl (const grub_pkcs7_rcl_t *rcl, const grub_x509_cert_t *pk)
 }
 
 static grub_err_t
+pkcs7_get_signer_cert (const grub_pkcs7_signer_t *signer,
+                       const grub_x509_cert_t *trust_certs,
+                       const grub_pkcs7_rcl_t *rcl,
+                       const grub_x509_cert_t **signer_cert,
+                       bool *cert_revoked)
+{
+  grub_err_t ret = GRUB_ERR_BAD_SIGNATURE;
+  const grub_x509_cert_t *pk;
+
+  for (pk = trust_certs; pk != NULL; pk = pk->next)
+    {
+      if ((signer->serial_len == pk->serial_len &&
+           grub_memcmp (pk->serial, signer->serial, signer->serial_len) == 0) &&
+          (signer->issuer_len == pk->issuer_len &&
+           grub_memcmp (pk->issuer, signer->issuer, signer->issuer_len) == 0))
+        {
+          ret = pkcs7_check_aginst_rcl (rcl, pk);
+          if (ret == GRUB_ERR_NONE)
+            *signer_cert = pk;
+          else
+            *cert_revoked = true;
+
+          return ret;
+        }
+    }
+
+  grub_dprintf ("appendedsig", "expecting key with PK-Algorithm (%s), issuer ('%s'),"
+                               " and serialNumber (%s) but not found\n",
+                signer->sig_algo.name, signer->issuer, signer->serial);
+
+  return ret;
+}
+
+static grub_err_t
 pkcs7_signed_data_verify (const grub_pkcs7_signed_data_t *pkcs7,
                           const grub_x509_cert_t *trust_certs,
                           const grub_pkcs7_rcl_t *rcl,
@@ -666,36 +700,30 @@ pkcs7_signed_data_verify (const grub_pkcs7_signed_data_t *pkcs7,
 
   for (signer = pkcs7->signers; signer != NULL; signer = signer->next, i++)
     {
-      for (pk = trust_certs; pk != NULL; pk = pk->next)
-        {
-          ret = pk->spki.pk_algo.verify (data, data_len, signer->md_algo.hash,
-                                         signer->sig, signer->sig_len,
-                                         &pk->spki.pk, pk->spki.pk_algo.aliases);
-          if (ret == GRUB_ERR_NONE)
-            {
-              ret = pkcs7_check_aginst_rcl (rcl, pk);
-              if (ret != GRUB_ERR_NONE)
-                *cert_revoked = true;
-              else
-                grub_dprintf ("appendedsig",
-                              "verify signer %d signatureAlgorithm (%s), issuer ('%s'), and "
-                              "serialNumber (%s) with key PK-Algorithm (%s), issuer ('%s'), "
-                              "and serialNumber (%s) succeeded\n",
-                              i, signer->sig_algo.name, signer->issuer, signer->serial,
-                              pk->spki.pk_algo.name, pk->issuer, pk->serial);
-              break;
-            }
+      ret = pkcs7_get_signer_cert (signer, trust_certs, rcl, &pk, cert_revoked);
+      if (ret != GRUB_ERR_NONE)
+        continue;
 
+      ret = pk->spki.pk_algo.verify (data, data_len, signer->md_algo.hash,
+                                     signer->sig, signer->sig_len,
+                                     &pk->spki.pk, pk->spki.pk_algo.aliases);
+      if (ret == GRUB_ERR_NONE)
+        {
           grub_dprintf ("appendedsig",
                         "verify signer %d signatureAlgorithm (%s), issuer ('%s'), and "
                         "serialNumber (%s) with key PK-Algorithm (%s), issuer ('%s'), "
-                        "and serialNumber (%s) failed\n",
+                        "and serialNumber (%s) succeeded\n",
                         i, signer->sig_algo.name, signer->issuer, signer->serial,
                         pk->spki.pk_algo.name, pk->issuer, pk->serial);
+          return ret;
         }
 
-      if (ret == GRUB_ERR_NONE)
-        break;
+      grub_dprintf ("appendedsig",
+                    "verify signer %d signatureAlgorithm (%s), issuer ('%s'), and "
+                    "serialNumber (%s) with key PK-Algorithm (%s), issuer ('%s'), "
+                    "and serialNumber (%s) failed\n",
+                    i, signer->sig_algo.name, signer->issuer, signer->serial,
+                    pk->spki.pk_algo.name, pk->issuer, pk->serial);
     }
 
   return ret;
