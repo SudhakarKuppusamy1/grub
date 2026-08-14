@@ -5,6 +5,7 @@ include:
   - local: '.gitlab-ci/yml/bootstrap.yml'
   - local: '.gitlab-ci/yml/build.yml'
   - local: '.gitlab-ci/yml/scheduled.yml'
+  - local: '.gitlab-ci/yml/release.yml'
   - local: '.gitlab-ci/yml/pages.yml'
 
 stages:
@@ -12,4 +13,5 @@ stages:
   - bootstrap
   - build
   - scheduled
+  - release
   - pages
