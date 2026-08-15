@@ -288,6 +288,65 @@ pkcs7_get_signerinfo_md_algo (asn1_node pkcs7_asn1, grub_int32_t signer_index,
 }
 
 static grub_err_t
+pkcs7_get_signerinfo_signed_attrs (const grub_uint8_t *raw_data,
+                                   const grub_int32_t raw_data_len,
+                                   const asn1_node pkcs7_asn1,
+                                   const grub_int32_t signer_index,
+                                   grub_pkcs7_signer_t *signer)
+{
+  grub_int32_t rc;
+  grub_int32_t start_off = 0;
+  grub_int32_t end_off = 0;
+  grub_int32_t attr_raw_len;
+  grub_uint8_t *attr_raw;
+  char *signed_attr_path;
+
+  signed_attr_path = grub_xasprintf ("signerInfos.?%d.signedAttrs", signer_index + 1);
+  if (signed_attr_path == NULL)
+    return grub_error (GRUB_ERR_OUT_OF_MEMORY,
+                       "could not allocate path for signer %d's signedattr parsing path",
+                       signer_index);
+
+  rc = asn1_der_decoding_startEnd (pkcs7_asn1, raw_data, raw_data_len,
+                                   signed_attr_path, &start_off, &end_off);
+  grub_free (signed_attr_path);
+  if (rc == ASN1_SUCCESS)
+    {
+      attr_raw_len = end_off - start_off + 1;
+      if (start_off < 0 || end_off >= raw_data_len || attr_raw_len <= 0)
+        return grub_error (GRUB_ERR_BAD_FILE_TYPE, "Malformed ASN1 memory window bounds");
+
+      attr_raw = grub_malloc (attr_raw_len);
+      if (attr_raw == NULL)
+        return grub_error (GRUB_ERR_OUT_OF_MEMORY,
+                           "could not allocate memory for signer %d's signedattrs",
+                           signer_index);
+
+      /* Copy the raw signedAttrs. */
+      grub_memcpy (attr_raw, &raw_data[start_off], attr_raw_len);
+
+      /*
+       * Perform PKCS#7 Implicit Tag Correction. The signedAttrs uses an ASN.1
+       * Implicit tag context mapping ([0] IMPLICIT SET OF Attribute).
+       * For crypto-validation matching, the signature expects a basic SET tag (0x31).
+       */
+      if (attr_raw[0] == 0xA0)
+        attr_raw[0] = 0x31;
+      else
+        {
+          grub_free (attr_raw);
+          return grub_error (GRUB_ERR_BAD_SIGNATURE,
+                             "Unexpected outer implicit tag (Expected 0xA0)");
+        }
+
+      signer->signed_attrs.raw = attr_raw;
+      signer->signed_attrs.raw_len = attr_raw_len;
+    }
+
+  return GRUB_ERR_NONE;
+}
+
+static grub_err_t
 pkcs7_get_signerinfo_sig_algo (asn1_node pkcs7_asn1, grub_int32_t signer_index,
                                grub_pkcs7_signer_t *signer)
 {
@@ -391,7 +450,8 @@ pkcs7_get_signerinfo_signature (asn1_node pkcs7_asn1, grub_int32_t signer_index,
 }
 
 static grub_err_t
-pkcs7_get_signerinfos (asn1_node pkcs7_asn1, grub_pkcs7_signed_data_t *pkcs7_signed_data)
+pkcs7_get_signerinfos (const grub_uint8_t *raw_data, const grub_int32_t raw_data_len,
+                       const asn1_node pkcs7_asn1, grub_pkcs7_signed_data_t *pkcs7_signed_data)
 {
   grub_err_t ret = GRUB_ERR_NONE;
   grub_int32_t rc, i;
@@ -419,35 +479,37 @@ pkcs7_get_signerinfos (asn1_node pkcs7_asn1, grub_pkcs7_signed_data_t *pkcs7_sig
         }
 
       ret = pkcs7_get_signerinfo_version (pkcs7_asn1, i, signer);
-      if (ret == GRUB_ERR_NONE)
-        {
-          ret = pkcs7_get_signerinfo_issuer_and_serial (pkcs7_asn1, i, signer);
-          if (ret == GRUB_ERR_NONE)
-            {
-              ret = pkcs7_get_signerinfo_md_algo (pkcs7_asn1, i, signer);
-              if (ret == GRUB_ERR_NONE)
-                {
-                  ret = pkcs7_get_signerinfo_sig_algo (pkcs7_asn1, i, signer);
-                  if (ret == GRUB_ERR_NONE)
-                    {
-                      ret = pkcs7_get_signerinfo_signature (pkcs7_asn1, i, signer);
-                      if (ret == GRUB_ERR_NONE)
-                        {
-                          signer->next = (signers != NULL ? signers : NULL);
-                          signers = signer;
-                          pkcs7_signed_data->no_of_signers++;
-                        }
-                    }
-                }
-            }
-        }
-
       if (ret != GRUB_ERR_NONE)
-        {
-          pkcs7_free_signers (signer);
-          break;
-        }
+        break;
+
+      ret = pkcs7_get_signerinfo_issuer_and_serial (pkcs7_asn1, i, signer);
+      if (ret != GRUB_ERR_NONE)
+        break;
+
+      ret = pkcs7_get_signerinfo_md_algo (pkcs7_asn1, i, signer);
+      if (ret != GRUB_ERR_NONE)
+        break;
+
+      ret = pkcs7_get_signerinfo_signed_attrs (raw_data, raw_data_len,
+                                               pkcs7_asn1, i, signer);
+      if (ret != GRUB_ERR_NONE)
+        break;
+
+      ret = pkcs7_get_signerinfo_sig_algo (pkcs7_asn1, i, signer);
+      if (ret != GRUB_ERR_NONE)
+        break;
+
+      ret = pkcs7_get_signerinfo_signature (pkcs7_asn1, i, signer);
+      if (ret != GRUB_ERR_NONE)
+        break;
+
+      signer->next = (signers != NULL ? signers : NULL);
+      signers = signer;
+      pkcs7_signed_data->no_of_signers++;
     }
+
+  if (ret != GRUB_ERR_NONE)
+    pkcs7_free_signers (signer);
 
   pkcs7_signed_data->signers = signers;
 
@@ -507,7 +569,7 @@ pkcs7_parse_signed_data (grub_uint8_t *signed_data, grub_int32_t signed_data_len
     goto exit;
 
   /* Read the signerInfos */
-  ret = pkcs7_get_signerinfos (pkcs7_asn1, pkcs7_signed_data);
+  ret = pkcs7_get_signerinfos (signed_data, signed_data_len, pkcs7_asn1, pkcs7_signed_data);
   if (ret != GRUB_ERR_NONE)
     pkcs7_free_signers (pkcs7_signed_data->signers);
 
@@ -704,9 +766,16 @@ pkcs7_signed_data_verify (const grub_pkcs7_signed_data_t *pkcs7,
       if (ret != GRUB_ERR_NONE)
         continue;
 
-      ret = pk->spki.pk_algo.verify (data, data_len, signer->md_algo.hash,
-                                     signer->sig, signer->sig_len,
-                                     &pk->spki.pk, pk->spki.pk_algo.aliases);
+      if (signer->signed_attrs.raw != NULL)
+        ret = pk->spki.pk_algo.verify (signer->signed_attrs.raw,
+                                       signer->signed_attrs.raw_len,
+                                       signer->md_algo.hash,
+                                       signer->sig, signer->sig_len,
+                                       &pk->spki.pk, pk->spki.pk_algo.aliases);
+      else
+        ret = pk->spki.pk_algo.verify (data, data_len, signer->md_algo.hash,
+                                       signer->sig, signer->sig_len,
+                                       &pk->spki.pk, pk->spki.pk_algo.aliases);
       if (ret == GRUB_ERR_NONE)
         {
           grub_dprintf ("appendedsig",
@@ -739,6 +808,8 @@ pkcs7_free_signers (grub_pkcs7_signer_t *signers)
       grub_free (signers->serial);
       grub_free (signers->issuer);
       grub_memset (&signers->md_algo, 0x00, sizeof (grub_pkcs7_mdalgo_t));
+      grub_free (signers->signed_attrs.raw);
+      grub_memset (&signers->signed_attrs, 0x00, sizeof (grub_pkcs7_signedattr_t));
       grub_memset (&signers->sig_algo, 0x00, sizeof (grub_pkcs7_sigalgo_t));
       grub_free (signers->sig);
       prev_signer = signers;
