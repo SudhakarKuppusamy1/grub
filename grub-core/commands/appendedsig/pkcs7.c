@@ -43,10 +43,10 @@ static const grub_pkcs7_mdalgo_t md_algos[] =
 
 static const grub_pkcs7_sigalgo_t sig_algos[] =
 {
-  {"rsaEncryption", "rsa", "1.2.840.113549.1.1.1", 20},
-  {"ML-DSA-44", "dilithium2", "2.16.840.1.101.3.4.3.17", 23},
-  {"ML-DSA-65", "dilithium3", "2.16.840.1.101.3.4.3.18", 23},
-  {"ML-DSA-87", "dilithium5", "2.16.840.1.101.3.4.3.19", 23}
+  {"rsaEncryption", "rsa", "1.2.840.113549.1.1.1", 20, {256, 384, 512}},
+  {"ML-DSA-44", "dilithium2", "2.16.840.1.101.3.4.3.17", 23, {2420, 0, 0}},
+  {"ML-DSA-65", "dilithium3", "2.16.840.1.101.3.4.3.18", 23, {3309, 0, 0}},
+  {"ML-DSA-87", "dilithium5", "2.16.840.1.101.3.4.3.19", 23, {4627, 0, 0}}
 };
 
 static void
@@ -329,6 +329,34 @@ pkcs7_get_signerinfo_sig_algo (asn1_node pkcs7_asn1, grub_int32_t signer_index,
                      "only rsaEncryption and ML-DSA are supported, found OID %s", algo_oid);
 }
 
+static bool
+pkcs7_is_valid_sig (const grub_pkcs7_signer_t *signer, const grub_int32_t sig_len)
+{
+  grub_size_t i = 0;
+
+  if (sig_algos[0].oid_len == signer->sig_algo.oid_len &&
+      grub_strncmp (signer->sig_algo.oid, sig_algos[0].oid,
+                    sig_algos[0].oid_len) == 0)
+    {
+      if (signer->sig_algo.sig_len[0] == sig_len ||
+          signer->sig_algo.sig_len[1] == sig_len ||
+          signer->sig_algo.sig_len[2] == sig_len)
+        return true;
+    }
+  else
+    {
+      for (i = 1; i < sizeof (sig_algos)/sizeof(sig_algos[0]); i++)
+        {
+          if (sig_algos[i].oid_len == signer->sig_algo.oid_len &&
+              grub_strncmp (signer->sig_algo.oid, sig_algos[i].oid,
+                            sig_algos[i].oid_len) == 0)
+            return (signer->sig_algo.sig_len[0] == sig_len);
+        }
+    }
+
+  return false;
+}
+
 static grub_err_t
 pkcs7_get_signerinfo_signature (asn1_node pkcs7_asn1, grub_int32_t signer_index,
                                 grub_pkcs7_signer_t *signer)
@@ -349,10 +377,17 @@ pkcs7_get_signerinfo_signature (asn1_node pkcs7_asn1, grub_int32_t signer_index,
   if (signature == NULL)
     return grub_errno;
 
-  signer->sig = signature;
-  signer->sig_len = signature_len;
+  if (pkcs7_is_valid_sig (signer, signature_len) == true)
+    {
+      signer->sig = signature;
+      signer->sig_len = signature_len;
+      return GRUB_ERR_NONE;
+    }
 
-  return GRUB_ERR_NONE;
+  grub_free (signature);
+
+  return grub_error (GRUB_ERR_NOT_IMPLEMENTED_YET,
+                     "unsupported signature: %d", signature_len);
 }
 
 static grub_err_t

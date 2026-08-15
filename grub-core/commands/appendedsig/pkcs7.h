@@ -31,6 +31,7 @@ struct sig_algo
   const char *aliases;
   const char *oid;
   const grub_int32_t oid_len;
+  const grub_int32_t sig_len[3];
 };
 typedef struct sig_algo grub_pkcs7_sigalgo_t;
 
