@@ -1031,6 +1031,7 @@ x509_cert_release (grub_x509_cert_t *cert)
   grub_free (cert->spki.pk.raw);
   _gcry_mpi_release (cert->spki.pk.modulus);
   _gcry_mpi_release (cert->spki.pk.exponent);
+  grub_memset (&cert->spki, 0x00, sizeof (grub_x509_spki_t));
   grub_free (cert->fingerprint[GRUB_FINGERPRINT_SHA256]);
   grub_free (cert->fingerprint[GRUB_FINGERPRINT_SHA384]);
   grub_free (cert->fingerprint[GRUB_FINGERPRINT_SHA512]);
