@@ -326,6 +326,10 @@ add_certificate (const grub_uint8_t *data, const grub_size_t data_size,
               rc = GRUB_ERR_ACCESS_DENIED;
               goto fail;
             }
+
+          rc = grub_x509_spec->check_validity (cert);
+          if (rc != GRUB_ERR_NONE)
+            goto fail;
         }
     }
 

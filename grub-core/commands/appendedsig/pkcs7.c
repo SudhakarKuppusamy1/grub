@@ -725,7 +725,11 @@ pkcs7_get_signer_cert (const grub_pkcs7_signer_t *signer,
         {
           ret = pkcs7_check_aginst_rcl (rcl, pk);
           if (ret == GRUB_ERR_NONE)
-            *signer_cert = pk;
+            {
+              ret = grub_x509_spec->check_validity (pk);
+              if (ret == GRUB_ERR_NONE)
+                *signer_cert = pk;
+            }
           else
             *cert_revoked = true;
 
