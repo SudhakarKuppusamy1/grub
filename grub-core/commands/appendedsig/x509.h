@@ -22,6 +22,7 @@
 
 #include <grub/crypto.h>
 #include <libtasn1.h>
+#include <grub/datetime.h>
 
 #include "pk.h"
 
@@ -58,6 +59,8 @@ struct spk_info
 };
 typedef struct spk_info grub_x509_spki_t;
 
+typedef struct grub_datetime grub_x509_time_t;
+
 /*
  * One or more x509 certificates. We do limited parsing:
  * extracting only the version, serial, issuer, subject, RSA public key
@@ -71,6 +74,8 @@ struct x509_cert
   grub_int32_t serial_len;
   char *issuer;
   grub_int32_t issuer_len;
+  grub_x509_time_t valid_from;
+  grub_x509_time_t valid_to;
   char *subject;
   grub_int32_t subject_len;
   grub_x509_spki_t spki;

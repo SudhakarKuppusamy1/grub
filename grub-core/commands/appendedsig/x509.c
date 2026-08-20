@@ -381,6 +381,64 @@ x509_verify_extended_key_usage (grub_uint8_t *value, grub_int32_t value_size)
   return err;
 }
 
+/* Convert a two-character numeric string slice into an integer */
+static int
+x509_str2digit (const char *str)
+{
+  return (str[0] - '0') * 10 + (str[1] - '0');
+}
+
+static grub_uint8_t
+x509_days_in_month (grub_uint16_t year, grub_uint8_t month)
+{
+  static const grub_uint8_t days[] = { 31, 28, 31, 30, 31, 30,
+                                       31, 31, 30, 31, 30, 31 };
+
+  /* Handle leap year adjustment for February. */
+  if (month == 2 &&
+      (year % 4 == 0) && (year % 100 != 0 || year % 400 == 0))
+    return 29;
+
+  return days[month - 1];
+}
+
+/* Converts raw time to GRUB's datetime struct */
+static grub_err_t
+x509_get_time (const char *time_str, const grub_int32_t len,
+               struct grub_datetime *dt)
+{
+  grub_memset (dt, 0, sizeof (*dt));
+
+  if (len == 13 && time_str[12] == 'Z') /* UTCTime: YYMMDDHHMMSSZ */
+    {
+      int year = x509_str2digit (time_str);
+      dt->year = (year < 50) ? (2000 + year) : (1900 + year);
+      time_str += 2;
+    }
+  else if (len == 15 && time_str[14] == 'Z') /* GeneralizedTime: YYYYMMDDHHMMSSZ */
+    {
+      dt->year = x509_str2digit (time_str) * 100 + x509_str2digit (time_str + 2);
+      time_str += 4;
+    }
+  else
+    return grub_error (GRUB_ERR_BAD_FILE_TYPE, "Unsupported ASN.1 time format");
+
+  /* Parse remaining identical chunks. */
+  dt->month  = x509_str2digit (time_str);
+  dt->day    = x509_str2digit (time_str + 2);
+  dt->hour   = x509_str2digit (time_str + 4);
+  dt->minute = x509_str2digit (time_str + 6);
+  dt->second = x509_str2digit (time_str + 8);
+
+  /* Simple range validating bounds. */
+  if (dt->month < 1 || dt->month > 12 || dt->day < 1 ||
+      dt->day > x509_days_in_month (dt->year, dt->month) ||
+      dt->hour > 23 || dt->minute > 59 || dt->second > 59)
+    return grub_error (GRUB_ERR_BAD_FILE_TYPE, "Invalid datetime values parsed");
+
+  return GRUB_ERR_NONE;
+}
+
 /*
  * TBSCertificate  ::=  SEQUENCE  {
  *       version         [0]  EXPLICIT Version DEFAULT v1,
@@ -426,6 +484,58 @@ x509_get_serial (asn1_node cert_asn1, grub_x509_cert_t *cert)
   ret = grub_util_buffer2hex (serial, serial_size, &cert->serial,
                               &cert->serial_len);
   grub_free (serial);
+
+  return ret;
+}
+
+static grub_err_t
+x509_get_validity (asn1_node cert_asn1, grub_x509_cert_t *cert)
+{
+  grub_err_t ret;
+  grub_int32_t raw_time_len, type_len;
+  char *raw_time, *type, *validity_path;
+
+  type = grub_asn1_allocate_and_read (cert_asn1, "tbsCertificate.validity.notBefore",
+                                      "certificate validity notBefore type", &type_len);
+  if (type == NULL)
+    return grub_errno;
+
+  validity_path = grub_xasprintf ("tbsCertificate.validity.notBefore.%s", type);
+  grub_free (type);
+  if (validity_path == NULL)
+    return grub_error (GRUB_ERR_OUT_OF_MEMORY, "out of memory");
+
+  raw_time = grub_asn1_allocate_and_read (cert_asn1, validity_path,
+                                          "certificate validity notBefore", &raw_time_len);
+  grub_free (validity_path);
+  if (raw_time == NULL)
+    return grub_errno;
+
+  ret = x509_get_time (raw_time, raw_time_len - 1, &cert->valid_from);
+  grub_free (raw_time);
+  if (ret != GRUB_ERR_NONE)
+    return ret;
+
+  type = grub_asn1_allocate_and_read (cert_asn1, "tbsCertificate.validity.notAfter",
+                                      "certificate validity notAfter type", &type_len);
+  if (type == NULL)
+    return grub_errno;
+
+  validity_path = grub_xasprintf ("tbsCertificate.validity.notAfter.%s", type);
+  grub_free (type);
+  if (validity_path == NULL)
+    return grub_error (GRUB_ERR_OUT_OF_MEMORY, "out of memory");
+
+  raw_time = grub_asn1_allocate_and_read (cert_asn1, validity_path,
+                                          "certificate validity notAfter", &raw_time_len);
+  grub_free (validity_path);
+  if (raw_time == NULL)
+    return grub_errno;
+
+  ret = x509_get_time (raw_time, raw_time_len - 1, &cert->valid_to);
+  grub_free (raw_time);
+  if (ret != GRUB_ERR_NONE)
+    return ret;
 
   return ret;
 }
@@ -845,10 +955,10 @@ x509_cert_parse_der (const void *der_data, grub_int32_t der_data_size, grub_x509
    * Validity ::= SEQUENCE {
    *     notBefore      Time,
    *     notAfter       Time }
-   *
-   * We can't validate this reasonably, we have no true time source on several
-   * platforms. For now we do not parse them.
    */
+  ret = x509_get_validity (cert_asn1, cert);
+  if (ret != GRUB_ERR_NONE)
+    goto exit;
 
   /*
    * issuer              Name,
@@ -1028,6 +1138,8 @@ x509_cert_release (grub_x509_cert_t *cert)
   grub_free (cert->issuer);
   grub_free (cert->subject);
   grub_free (cert->serial);
+  grub_memset (&cert->valid_from, 0x00, sizeof (grub_x509_time_t));
+  grub_memset (&cert->valid_to, 0x00, sizeof (grub_x509_time_t));
   grub_free (cert->spki.pk.raw);
   _gcry_mpi_release (cert->spki.pk.modulus);
   _gcry_mpi_release (cert->spki.pk.exponent);
