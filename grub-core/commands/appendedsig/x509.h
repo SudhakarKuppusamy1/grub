@@ -96,6 +96,9 @@ typedef bool (*grub_x509_cert_cmp_t) (const grub_x509_cert_t *cert1,
 /* Type for the x509_cert_print function.  */
 typedef void (*grub_x509_print_t) (const grub_x509_cert_t *crt);
 
+/* Type for the x509_check_validity function.  */
+typedef grub_err_t (*grub_x509_validity_t) (const grub_x509_cert_t *crt);
+
 /* Type for the x509_cert_parse_der function.  */
 typedef grub_err_t (*grub_x509_parse_t) (const void *der_data,
                                          const grub_int32_t der_data_len,
@@ -113,6 +116,7 @@ typedef struct x509_spec
   grub_x509_fp_cmp_t fp_cmp;
   grub_x509_cert_cmp_t cert_cmp;
   grub_x509_print_t print;
+  grub_x509_validity_t check_validity;
   grub_x509_parse_t parse_der;
   grub_x509_release_t release;
   grub_x509_free_t free;

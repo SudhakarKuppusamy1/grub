@@ -1023,6 +1023,64 @@ x509_cert_parse_der (const void *der_data, grub_int32_t der_data_size, grub_x509
   return ret;
 }
 
+static grub_err_t
+x509_check_validity (const grub_x509_cert_t *cert)
+{
+  struct grub_datetime current_dt;
+  grub_int64_t not_before_epoch;
+  grub_int64_t not_after_epoch;
+  grub_int64_t current_epoch;
+
+  if (cert == NULL)
+    return grub_error (GRUB_ERR_BAD_ARGUMENT, "bad input certificate");
+
+  if (grub_get_datetime (&current_dt) != GRUB_ERR_NONE)
+    {
+      grub_dprintf ("appendedsig", "failed to read the system clock\n");
+      return GRUB_ERR_IO;
+    }
+
+  if (!grub_datetime2unixtime (&cert->valid_from, &not_before_epoch))
+    {
+      grub_dprintf ("appendedsig", "failed to calculate notBefore epoch conversion\n");
+      return GRUB_ERR_BAD_NUMBER;
+    }
+
+  if (!grub_datetime2unixtime (&cert->valid_to, &not_after_epoch))
+    {
+      grub_dprintf ("appendedsig", "failed to calculate notAfter epoch conversion\n");
+      return GRUB_ERR_BAD_NUMBER;
+    }
+
+  if (!grub_datetime2unixtime (&current_dt, &current_epoch))
+    {
+      grub_dprintf ("appendedsig", "failed to calculate system clock epoch conversion\n");
+      return GRUB_ERR_BAD_NUMBER;
+    }
+
+  if (not_before_epoch > not_after_epoch)
+    {
+      grub_dprintf ("appendedsig", "certificate (CN=%s) notBefore occurs after notAfter\n",
+                    cert->subject);
+      return GRUB_ERR_OUT_OF_RANGE;
+    }
+
+  if (current_epoch < not_before_epoch)
+    {
+      grub_dprintf ("appendedsig", "certificate (CN=%s) is not yet valid (premature timeline)\n",
+                    cert->subject);
+      return GRUB_ERR_OUT_OF_RANGE;
+    }
+
+  if (current_epoch > not_after_epoch)
+    {
+      grub_dprintf ("appendedsig", "certificate (CN=%s) has expired\n", cert->subject);
+      return GRUB_ERR_OUT_OF_RANGE;
+    }
+
+  return GRUB_ERR_NONE;
+}
+
 static bool
 x509_fp_cmp (const grub_uint8_t *hash_data, const grub_size_t hash_data_size,
              const grub_x509_cert_t *cert)
@@ -1162,6 +1220,7 @@ static grub_x509_spec_t _grub_x509_spec =
     x509_fp_cmp,
     x509_cert_cmp,
     x509_cert_print,
+    x509_check_validity,
     x509_cert_parse_der,
     x509_cert_release,
     x509_cert_free
