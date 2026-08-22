@@ -2716,6 +2716,8 @@ module = {
   common = lib/libgcrypt-grub/cipher/dsa-common.c;
   common = lib/libgcrypt-grub/src/sexp.c;
   common = lib/b64dec.c;
+  extra_dist = lib/libgcrypt-grub/cipher/dilithium-common.c;
+  extra_dist = lib/libgcrypt-grub/cipher/dilithium-dep.c;
 
   cflags = '$(CFLAGS_GCRY) -Wno-redundant-decls';
   cppflags = '$(CPPFLAGS_GCRY)';
