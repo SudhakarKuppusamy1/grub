@@ -48,6 +48,7 @@ struct signedattrs
 {
   grub_uint8_t *msg_digest;
   grub_int32_t msg_digest_len;
+  grub_int64_t signing_time;
   grub_uint8_t *raw;
   grub_int32_t raw_len;
 };
