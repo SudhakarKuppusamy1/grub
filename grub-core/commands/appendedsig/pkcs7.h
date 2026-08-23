@@ -46,6 +46,8 @@ typedef struct md_algo grub_pkcs7_mdalgo_t;
 
 struct signedattrs
 {
+  grub_uint8_t *msg_digest;
+  grub_int32_t msg_digest_len;
   grub_uint8_t *raw;
   grub_int32_t raw_len;
 };
