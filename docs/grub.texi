@@ -108,7 +108,6 @@ This edition documents version @value{VERSION}.
 * User-space utilities::        Usage of user-space utilities
 * Obtaining and Building GRUB:: How to obtain and build GRUB
 * Reporting bugs::              Where you should send a bug report
-* Deprecated Features::         Deprecation of GRUB features / architectures
 * Future::                      Some future plans on GRUB
 * Copying This Manual::         Copying This Manual
 * Index::
@@ -249,8 +248,8 @@ devices using file system labels or Universally Unique Identifiers (UUIDs).
 
 @item
 GRUB 2 is available for several other types of system in addition to the PC
-BIOS systems supported by GRUB Legacy: PC EFI, PC coreboot,
-PowerPC, SPARC, and MIPS (deprecated) are all supported.
+BIOS systems supported by GRUB Legacy: PC EFI, PC coreboot, PowerPC, SPARC,
+and MIPS Lemote Yeeloong are all supported.
 
 @item
 Many more file systems are supported, including but not limited to ext4,
@@ -4470,18 +4469,14 @@ This is used as part of LZO decompression / compression.
 @node affs_module
 @section affs
 This module provides support for the Amiga Fast FileSystem (AFFS).
-This is also used by AROS (Research Operating System).
 Note: This module is not allowed in lockdown mode, @pxref{Lockdown} for more
 information.
 
 @node afs_module
-@section afs (Deprecated)
+@section afs
 This module provides support for the AtheOS File System (AFS).
 Note: This module is not allowed in lockdown mode, @pxref{Lockdown} for more
 information.
-
-This module is now deprecated and will be removed in a future release,
-@pxref{Deprecated Features} for more information.
 
 @node afsplitter_module
 @section afsplitter
@@ -4507,12 +4502,9 @@ such as "ELF", for example support for the "a.out" format was removed from the
 Linux kernel in 5.18.
 
 @node appleldr_module
-@section appleldr (Deprecated)
+@section appleldr
 This module provides support for loading files on a BIOS / EFI based Apple Mac
 computer (Intel based Macs).
-
-This module is now deprecated and will be removed in a future release,
-@pxref{Deprecated Features} for more information.
 
 @node archelp_module
 @section archelp
@@ -4543,13 +4535,10 @@ This module provides the command @command{backtrace} for printing a backtrace
 to the terminal for the current call stack.
 
 @node bfs_module
-@section bfs (Deprecated)
+@section bfs
 This module provides support for the BeOS "Be File System" (BFS).
 Note: This module is not allowed in lockdown mode, @pxref{Lockdown} for more
 information.
-
-This module is now deprecated and will be removed in a future release,
-@pxref{Deprecated Features} for more information.
 
 @node biosdisk_module
 @section biosdisk
@@ -4938,14 +4927,11 @@ This module provides support for running the GRUB functional tests using
 commands @command{functional_test} and @command{all_functional_test}.
 
 @node gcry_arcfour_module
-@section gcry_arcfour (Deprecated)
+@section gcry_arcfour
 This module provides support for the arcfour stream cipher also known as RC4.
 If security is a concern, RC4 / arcfour cipher is consider broken (multiple
 known vulnerabilities make this insecure).
 This GRUB module is based on libgcrypt.
-
-This module is now deprecated and will be removed in a future release,
-@pxref{Deprecated Features} for more information.
 
 @node gcry_aria_module
 @section gcry_aria
@@ -4979,15 +4965,12 @@ cyclic redundancy checks.
 This GRUB module is based on libgcrypt.
 
 @node gcry_des_module
-@section gcry_des (Deprecated)
+@section gcry_des
 This module provides support for the Data Encryption Standard (DES) and
 Triple-DES ciphers.
 If security is a concern, DES has known vulnerabilities and is not recommended,
 and Triple-DES is no longer recommended by NIST.
 This GRUB module is based on libgcrypt.
-
-This module is now deprecated and will be removed in a future release,
-@pxref{Deprecated Features} for more information.
 
 @node gcry_dsa_module
 @section gcry_dsa
@@ -4995,29 +4978,20 @@ This module provides support for the Digital Signature Algorithm (DSA) cipher.
 This GRUB module is based on libgcrypt.
 
 @node gcry_gost28147_module
-@section gcry_gost28147 (Deprecated)
+@section gcry_gost28147
 This module provides support for the GOST 28147-89 cipher.
 This GRUB module is based on libgcrypt.
 
-This module is now deprecated and will be removed in a future release,
-@pxref{Deprecated Features} for more information.
-
 @node gcry_gostr3411_94_module
-@section gcry_gostr3411_94 (Deprecated)
+@section gcry_gostr3411_94
 This module provides support for the GOST R 34.11-94 message digest.
 This GRUB module is based on libgcrypt.
 
-This module is now deprecated and will be removed in a future release,
-@pxref{Deprecated Features} for more information.
-
 @node gcry_idea_module
-@section gcry_idea (Deprecated)
+@section gcry_idea
 This module provides support for the International Data Encryption Algorithm
 (IDEA) cipher.
 This GRUB module is based on libgcrypt.
-
-This module is now deprecated and will be removed in a future release,
-@pxref{Deprecated Features} for more information.
 
 @node gcry_keccak_module
 @section gcry_keccak
@@ -5026,13 +5000,10 @@ SHAKE128 and SHAKE256).
 This GRUB module is based on libgcrypt.
 
 @node gcry_md4_module
-@section gcry_md4 (Deprecated)
+@section gcry_md4
 This module provides support for the Message Digest 4 (MD4) message digest.
 If security is a concern, MD4 has known vulnerabilities and is not recommended.
 This GRUB module is based on libgcrypt.
-
-This module is now deprecated and will be removed in a future release,
-@pxref{Deprecated Features} for more information.
 
 @node gcry_md5_module
 @section gcry_md5
@@ -5041,13 +5012,10 @@ If security is a concern, MD5 has known vulnerabilities and is not recommended.
 This GRUB module is based on libgcrypt.
 
 @node gcry_rfc2268_module
-@section gcry_rfc2268 (Deprecated)
+@section gcry_rfc2268
 This module provides support for the RFC2268 (RC2 / Ron's Cipher 2) cipher.
 If security is a concern, RC2 has known vulnerabilities and is not recommended.
 This GRUB module is based on libgcrypt.
-
-This module is now deprecated and will be removed in a future release,
-@pxref{Deprecated Features} for more information.
 
 @node gcry_rijndael_module
 @section gcry_rijndael
@@ -5071,12 +5039,9 @@ This module provides support for the Salsa20 cipher.
 This GRUB module is based on libgcrypt.
 
 @node gcry_seed_module
-@section gcry_seed (Deprecated)
+@section gcry_seed
 This module provides support for the SEED cipher.
 This GRUB module is based on libgcrypt.
-
-This module is now deprecated and will be removed in a future release,
-@pxref{Deprecated Features} for more information.
 
 @node gcry_serpent_module
 @section gcry_serpent
@@ -5324,16 +5289,13 @@ This module is intended for performing a functional test of the legacy password
 function in GRUB.
 
 @node legacycfg_module
-@section legacycfg (Deprecated)
+@section legacycfg
 This module provides support for commands @command{legacy_source},
 @command{legacy_configfile}, @command{extract_legacy_entries_source},
 @command{extract_legacy_entries_configfile}, @command{legacy_kernel},
 @command{legacy_initrd}, @command{legacy_initrd_nounzip},
 @command{legacy_password}, and @command{legacy_check_password}. For new uses /
 configurations of GRUB other commands / modules offer the modern equivalents.
-
-This module is now deprecated and will be removed in a future release,
-@pxref{Deprecated Features} for more information.
 
 @node linux_module
 @section linux
@@ -5380,12 +5342,9 @@ This module provides support for the @command{lsacpi} command. This command
 can be used to display Advanced Configuration and Power Interface (ACPI) tables.
 
 @node lsapm_module
-@section lsapm (Deprecated)
+@section lsapm
 This module provides support for the @command{lsapm} command. This command
 can be used to display Advanced power management (APM) information.
-
-This module is now deprecated and will be removed in a future release,
-@pxref{Deprecated Features} for more information.
 
 @node lsdev_module
 @section lsdev
@@ -5423,22 +5382,16 @@ This module provides support for the @command{lspci} command. This
 command can be used to display the PCI / PCIe devices.
 
 @node lssal_module
-@section lssal (Deprecated)
+@section lssal
 This module provides support for the @command{lsefisystab} command. This
 command can be used on Itanium (IA-64) EFI platforms to display the EFI
 System Abstraction Layer system table.
 
-This module is now deprecated and will be removed in a future release,
-@pxref{Deprecated Features} for more information.
-
 @node lsspd_module
-@section lsspd (Deprecated)
+@section lsspd
 This module provides support for the @command{lsspd} command. This
 command can be used on MIPS Loongson platforms to display the DDR RAM Serial
 Presence Detect (SPD) EEPROM data.
-
-This module is now deprecated and will be removed in a future release,
-@pxref{Deprecated Features} for more information.
 
 @node lsxen_module
 @section lsxen
@@ -5475,40 +5428,28 @@ using the HFS or HFS+ file system. On HFS / HFS+ - "blessing" makes a file
 run as the bootloader.
 
 @node macho_module
-@section macho (Deprecated)
+@section macho
 This module provides support for Mach Object (Mach-O) object / executable files
 in GRUB often used in MacOS.
 
-This module is now deprecated and will be removed in a future release,
-@pxref{Deprecated Features} for more information.
-
 @node mda_text_module
-@section mda_text (Deprecated)
+@section mda_text
 This module provides support for the Monochrome Display Adapter (MDA) terminal
 output device. MDA is a predecessor to VGA.
 
-This module is now deprecated and will be removed in a future release,
-@pxref{Deprecated Features} for more information.
-
 @node mdraid09_module
-@section mdraid09 (Deprecated)
+@section mdraid09
 This module provides support for handling Linux compatible "version 0.9"
 software-based RAID disks in little-endian format. The "version 0.9" format
 was largely replaced around the year 2009 with the "version 1.x" format
 (@pxref{mdraid1x_module} for more information).
 
-This module is now deprecated and will be removed in a future release,
-@pxref{Deprecated Features} for more information.
-
 @node mdraid09_be_module
-@section mdraid09_be (Deprecated)
+@section mdraid09_be
 This module provides support for handling Linux compatible "version 0.9"
 software-based RAID disks in bid-endian format. The "version 0.9" format
 was largely replaced around the year 2009 with the "version 1.x" format
 (@pxref{mdraid1x_module} for more information).
-
-This module is now deprecated and will be removed in a future release,
-@pxref{Deprecated Features} for more information.
 
 @node mdraid1x_module
 @section mdraid1x
@@ -5549,58 +5490,40 @@ Note: The @command{dump} command is not allowed when lockdown is enforced
 (@pxref{Lockdown}).
 
 @node minix_module
-@section minix (Deprecated)
+@section minix
 This module provides support for the Minix filesystem, version 1.
 Note: This module is not allowed in lockdown mode, @pxref{Lockdown} for more
 information.
 
-This module is now deprecated and will be removed in a future release,
-@pxref{Deprecated Features} for more information.
-
 @node minix2_module
-@section minix2 (Deprecated)
+@section minix2
 This module provides support for the Minix filesystem, version 2.
 Note: This module is not allowed in lockdown mode, @pxref{Lockdown} for more
 information.
 
-This module is now deprecated and will be removed in a future release,
-@pxref{Deprecated Features} for more information.
-
 @node minix2_be_module
-@section minix2_be (Deprecated)
+@section minix2_be
 This module provides support for the Minix filesystem, version 2 big-endian.
 Note: This module is not allowed in lockdown mode, @pxref{Lockdown} for more
 information.
 
-This module is now deprecated and will be removed in a future release,
-@pxref{Deprecated Features} for more information.
-
 @node minix3_module
-@section minix3 (Deprecated)
+@section minix3
 This module provides support for the Minix filesystem, version 3.
 Note: This module is not allowed in lockdown mode, @pxref{Lockdown} for more
 information.
 
-This module is now deprecated and will be removed in a future release,
-@pxref{Deprecated Features} for more information.
-
 @node minix3_be_module
-@section minix3_be (Deprecated)
+@section minix3_be
 This module provides support for the Minix filesystem, version 3 big-endian.
 Note: This module is not allowed in lockdown mode, @pxref{Lockdown} for more
 information.
 
-This module is now deprecated and will be removed in a future release,
-@pxref{Deprecated Features} for more information.
-
 @node minix_be_module
-@section minix_be (Deprecated)
+@section minix_be
 This module provides support for the Minix filesystem, version 1 big-endian.
 Note: This module is not allowed in lockdown mode, @pxref{Lockdown} for more
 information.
-
-This module is now deprecated and will be removed in a future release,
-@pxref{Deprecated Features} for more information.
 
 @node mmap_module
 @section mmap
@@ -5762,12 +5685,9 @@ Note: This module is not allowed in lockdown mode, @pxref{Lockdown} for more
 information.
 
 @node ntldr_module
-@section ntldr (Deprecated)
+@section ntldr
 This module provides support for the @command{ntldr} command. This is may be
 used to boot a Windows boot loader such as NTLDR or BootMGR.
-
-This module is now deprecated and will be removed in a future release,
-@pxref{Deprecated Features} for more information.
 
 @node odc_module
 @section odc
@@ -5795,20 +5715,14 @@ This module provides support for the Open Host Controller Interface (OHCI) for
 USB 1 / USB 1.1 support in GRUB.
 
 @node part_acorn_module
-@section part_acorn (Deprecated)
+@section part_acorn
 This module provides support for reading from disks partitioned with the
 Acorn Disc Filing System (ADFS) used on RiscOS.
 
-This module is now deprecated and will be removed in a future release,
-@pxref{Deprecated Features} for more information.
-
 @node part_amiga_module
-@section part_amiga (Deprecated)
+@section part_amiga
 This module provides support for reading from disks partitioned with the
 Amiga partition table.
-
-This module is now deprecated and will be removed in a future release,
-@pxref{Deprecated Features} for more information.
 
 @node part_apple_module
 @section part_apple
@@ -5821,20 +5735,14 @@ This module provides support for reading from disks partitioned with BSD
 style partition tables.
 
 @node part_dfly_module
-@section part_dfly (Deprecated)
+@section part_dfly
 This module provides support for reading from disks partitioned with the
 DragonFly BSD partition table.
 
-This module is now deprecated and will be removed in a future release,
-@pxref{Deprecated Features} for more information.
-
 @node part_dvh_module
-@section part_dvh (Deprecated)
+@section part_dvh
 This module provides support for reading from disks partitioned with the
 SGI Disk Volume Header partition table.
-
-This module is now deprecated and will be removed in a future release,
-@pxref{Deprecated Features} for more information.
 
 @node part_gpt_module
 @section part_gpt
@@ -5847,12 +5755,9 @@ This module provides support for reading from disks partitioned with the
 MSDOS (Master Boot Record / MBR) style partition tables.
 
 @node part_plan_module
-@section part_plan (Deprecated)
+@section part_plan
 This module provides support for reading from disk partitioned with the
 Plan9 style partition table.
-
-This module is now deprecated and will be removed in a future release,
-@pxref{Deprecated Features} for more information.
 
 @node part_sun_module
 @section part_sun
@@ -5927,12 +5832,9 @@ by "cryptsetup" operating in "plain mode". @xref{plainmount} for more
 information.
 
 @node plan9_module
-@section plan9 (Deprecated)
+@section plan9
 This module provides support for the @command{plan9} command to load a Plan9
 kernel.
-
-This module is now deprecated and will be removed in a future release,
-@pxref{Deprecated Features} for more information.
 
 @node play_module
 @section play
@@ -5974,12 +5876,9 @@ This module provides support for Preboot Execution Environment (PXE) network
 boot services as a file system driver for other GRUB modules.
 
 @node pxechain_module
-@section pxechain (Deprecated)
+@section pxechain
 This module provides support for the @command{pxechainloader} command to load
 another bootloader by PXE.
-
-This module is now deprecated and will be removed in a future release,
-@pxref{Deprecated Features} for more information.
 
 @node raid5rec_module
 @section raid5rec
@@ -6017,13 +5916,10 @@ regular expression matches a string. This module also provides support for the
 GRUB script wildcard translator. @xref{regexp} for more information.
 
 @node reiserfs_module
-@section reiserfs (Deprecated)
+@section reiserfs
 This module provides support for the ReiserFS File System in GRUB.
 Note: This module is not allowed in lockdown mode, @pxref{Lockdown} for more
 information.
-
-This module is now deprecated and will be removed in a future release,
-@pxref{Deprecated Features} for more information.
 
 @node relocator_module
 @section relocator
@@ -6031,13 +5927,10 @@ This module provides support for relocating the image / executable being loaded
 to the expected memory location(s) and jumping to (invoking) the executable.
 
 @node romfs_module
-@section romfs (Deprecated)
+@section romfs
 This module provides support for the Read-Only Memory File System (ROMFS).
 Note: This module is not allowed in lockdown mode, @pxref{Lockdown} for more
 information.
-
-This module is now deprecated and will be removed in a future release,
-@pxref{Deprecated Features} for more information.
 
 @node rsa_sexp_test_module
 @section rsa_sexp_test
@@ -6108,13 +6001,10 @@ This module provides support for the @command{setpci} command to get / set
 values from / to specified PCI / PCIe devices.
 
 @node sfs_module
-@section sfs (Deprecated)
+@section sfs
 This module provides support for the Amiga Smart File System (SFS) in GRUB.
 Note: This module is not allowed in lockdown mode, @pxref{Lockdown} for more
 information.
-
-This module is now deprecated and will be removed in a future release,
-@pxref{Deprecated Features} for more information.
 
 @node shift_test_module
 @section shift_test
@@ -6275,12 +6165,9 @@ This module provides support for the commands @command{true} and
 @command{false}. @xref{true} and @ref{false} for more information.
 
 @node truecrypt_module
-@section truecrypt (Deprecated)
+@section truecrypt
 This module provides support for the @command{truecrypt} command. This can be
 used to load a Truecrypt ISO image.
-
-This module is now deprecated and will be removed in a future release,
-@pxref{Deprecated Features} for more information.
 
 @node ubootnet_module
 @section ubootnet
@@ -6456,7 +6343,7 @@ This module provides support for the commands @command{xen_hypervisor} and
 This module provides support for the XFS file system in GRUB.
 
 @node xnu_module
-@section xnu (Deprecated)
+@section xnu
 This module provides support for the commands: @command{xnu_devprop_load},
 @command{xnu_kernel}, @command{xnu_kernel64}, @command{xnu_mkext},
 @command{xnu_kext}, @command{xnu_kextdir}, @command{xnu_ramdisk},
@@ -6464,24 +6351,15 @@ This module provides support for the commands: @command{xnu_devprop_load},
 These commands support loading and interacting with a XNU (MacOS / Apple) based
 system / kernel.
 
-This module is now deprecated and will be removed in a future release,
-@pxref{Deprecated Features} for more information.
-
 @node xnu_uuid_module
-@section xnu_uuid (Deprecated)
+@section xnu_uuid
 This module provides support for the @command{xnu_uuid} command to transform
 a 64-bit UUID to a format suitable for XNU.
 
-This module is now deprecated and will be removed in a future release,
-@pxref{Deprecated Features} for more information.
-
 @node xnu_uuid_test_module
-@section xnu_uuid_test (Deprecated)
+@section xnu_uuid_test
 This module is intended for performing a functional test of the XNU UUID
 conversion function.
-
-This module is now deprecated and will be removed in a future release,
-@pxref{Deprecated Features} for more information.
 
 @node xzio_module
 @section xzio
@@ -11063,8 +10941,6 @@ network for obtaining a GRUB config file.
 @node Platform limitations
 @chapter Platform limitations
 
-See @ref{Deprecated Features} for deprecated architectures / platforms.
-
 GRUB2 is designed to be portable and is actually ported across platforms. We
 try to keep all platforms at the level. Unfortunately some platforms are better
 supported than others. This is detailed in current and 2 following sections.
@@ -11373,8 +11249,8 @@ X86 support is summarised in the following table. ``Yes'' means that the kernel 
 @item Requires ACPI
 @end enumerate
 
-PowerPC, IA64 (deprecated) and Sparc64 ports support only Linux.
-MIPS (deprecated) port supports Linux and multiboot2.
+PowerPC, IA64 and Sparc64 ports support only Linux. MIPS port supports Linux
+and multiboot2.
 
 @section Boot tests
 
@@ -12286,188 +12162,6 @@ important.
 If you follow the guideline above,
 @uref{https://gitlab.freedesktop.org/gnu-grub/grub/-/work_items, create an issue}.
 Once we get your report, we will try to fix the bugs.
-
-@node  Deprecated Features
-@appendix Deprecated Features
-
-To enable GRUB development and testing to focus on actively used / useful features,
-functions, and architectures (and reduce maintenance burden of outdated features)
-a deprecation plan is now in place.
-
-The plan is generally a three phase approach:
-@enumerate
-@item
-Phase 1: Marked as deprecated in documentation. As this plan
-is being started in 2.16, Phase 1 is first applicable for this release
-and the initial Phase 1 items will be removed 2 releases from now.
-
-@item
-Phase 2: Disabled by default in the build system in the release following 2.16,
-with option to explicitly enable.
-
-@item
-Phase 3: Associated code, documentation, and tests are removed in two releases
-after 2.16.
-@end enumerate
-
-This list is based on the perceived usage of these features, availability of hardware, etc.
-If you see a case for keeping one of more of these items please feel free to create an
-item or ask a question on GitLab:
-@uref{https://gitlab.freedesktop.org/gnu-grub/grub/-/work_items, create an issue}.
-Alternatively, you can post to the GRUB mailing list as discussed here:
-@uref{https://www.gnu.org/software/grub/grub-mailinglist.html, mailing list}.
-
-The following is a list of functionality, features, and architectures that are now
-marked as deprecated and which deprecation 'phase' (see above) they are:
-
-
-@node Phase 1 - Marked as Deprecated in Documentation
-@section Phase 1 - Marked as Deprecated in Documentation
-
-@itemize @bullet
-
-@item
-Architecture i386-ieee1275 (does not impact i386-pc)
-
-@item
-Architecture ia64 (Itanium)
-
-@item
-Architecture mips (all variants)
-
-@item
-Architecture riscv32
-
-@item
-@ref{afs_module}
-
-@item
-@ref{appleldr_module}
-
-@item
-@ref{bfs_module}
-
-@item
-@ref{gcry_arcfour_module}
-
-@item
-@ref{gcry_des_module}
-
-@item
-@ref{gcry_gost28147_module}
-
-@item
-@ref{gcry_gostr3411_94_module}
-
-@item
-@ref{gcry_idea_module}
-
-@item
-@ref{gcry_md4_module}
-
-@item
-@ref{gcry_rfc2268_module}
-
-@item
-@ref{gcry_seed_module}
-
-@item
-@ref{legacycfg_module}
-
-@item
-@ref{lsapm_module}
-
-@item
-@ref{lssal_module}
-
-@item
-@ref{lsspd_module}
-
-@item
-@ref{macho_module}
-
-@item
-@ref{mda_text_module}
-
-@item
-@ref{mdraid09_module}
-
-@item
-@ref{mdraid09_be_module}
-
-@item
-@ref{minix_module}
-
-@item
-@ref{minix2_module}
-
-@item
-@ref{minix2_be_module}
-
-@item
-@ref{minix3_module}
-
-@item
-@ref{minix3_be_module}
-
-@item
-@ref{minix_be_module}
-
-@item
-@ref{ntldr_module}
-
-@item
-@ref{part_acorn_module}
-
-@item
-@ref{part_amiga_module}
-
-@item
-@ref{part_dfly_module}
-
-@item
-@ref{part_dvh_module}
-
-@item
-@ref{part_plan_module}
-
-@item
-@ref{plan9_module}
-
-@item
-@ref{pxechain_module}
-
-@item
-@ref{reiserfs_module}
-
-@item
-@ref{romfs_module}
-
-@item
-@ref{sfs_module}
-
-@item
-@ref{truecrypt_module}
-
-@item
-@ref{xnu_module}
-
-@item
-@ref{xnu_uuid_module}
-
-@item
-@ref{xnu_uuid_test_module}
-
-@end itemize
-
-@node Phase 2 - Disabled by Default - Can be explicitly enabled
-@section Phase 2 - Disabled by Default - Can be explicitly enabled
-None for this release.
-
-@node Phase 3 - Removed from GRUB
-@section Phase 3 - Removed from GRUB
-None for this release.
-
 
 @node Future
 @appendix Where GRUB will go
