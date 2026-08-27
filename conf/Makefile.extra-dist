@@ -70,6 +70,7 @@ EXTRA_DIST += grub-core/lib/libtasn1-patches/0010-asn1_test-remove-verbose-and-t
 EXTRA_DIST += grub-core/lib/libtasn1-patches/0011-asn1_test-print-the-error-messages-with-grub_printf.patch
 EXTRA_DIST += grub-core/lib/libtasn1-patches/0012-asn1_test-use-the-grub-specific-functions-and-types.patch
 EXTRA_DIST += grub-core/lib/libtasn1-patches/0013-asn1_test-enable-the-testcase-only-when-GRUB_LONG_MA.patch
+EXTRA_DIST += grub-core/lib/libtasn1-patches/0014-asn1_test-adapt-the-coding-long-oid-and-Test_errors-.patch
 
 EXTRA_DIST += grub-core/lib/libgcrypt
 EXTRA_DIST += grub-core/lib/libgcrypt-grub/mpi/generic
